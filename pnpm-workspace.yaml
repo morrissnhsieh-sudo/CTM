@@ -5,3 +5,4 @@ packages:
   - 'apps/messaging-service'
   - 'packages/shared-types'
   - 'packages/kafka-schemas'
+  - 'testing'

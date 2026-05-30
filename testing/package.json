@@ -1,0 +1,45 @@
+{
+  "name": "@ctm/testing",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "test:coverage": "vitest run --coverage",
+    "test:m1": "vitest run m1-frontend",
+    "test:m2": "vitest run m2-collab",
+    "test:m3": "vitest run m3-api",
+    "test:m4": "vitest run m4-formula",
+    "test:m7": "vitest run m7-messaging",
+    "test:m8": "vitest run m8-kafka",
+    "test:m10": "vitest run m10-auth",
+    "test:m5": "cd ../apps/pm-service && go test ./...",
+    "test:m6": "cd ../apps/ai-service && python -m pytest testing/ -v",
+    "test:m9": "docker exec ctm-postgres psql -U ctm -d ctm -f /migrations/test_rls.sql",
+    "test:e2e": "playwright test e2e/",
+    "test:all": "pnpm test && pnpm test:m5 && pnpm test:m6"
+  },
+  "dependencies": {
+    "@ctm/shared-types": "workspace:*"
+  },
+  "devDependencies": {
+    "vitest": "^2.1.0",
+    "@vitest/coverage-v8": "^2.1.0",
+    "@testing-library/react": "^16.0.0",
+    "@testing-library/user-event": "^14.5.0",
+    "@testing-library/jest-dom": "^6.5.0",
+    "supertest": "^7.0.0",
+    "@types/supertest": "^6.0.0",
+    "msw": "^2.4.0",
+    "@playwright/test": "^1.48.0",
+    "yjs": "^13.6.21",
+    "zustand": "^5.0.0",
+    "zod": "^3.23.0",
+    "hyperformula": "^2.6.0",
+    "decimal.js": "^10.4.3",
+    "typescript": "^5.4.0",
+    "@types/node": "^22.0.0",
+    "happy-dom": "^15.0.0"
+  }
+}
