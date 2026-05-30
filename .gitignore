@@ -1,0 +1,61 @@
+# ─── Dependencies ────────────────────────────────────────────
+node_modules/
+.pnpm-store/
+
+# ─── Build outputs ───────────────────────────────────────────
+dist/
+build/
+.next/
+out/
+
+# ─── Environment & secrets ───────────────────────────────────
+.env
+.env.local
+.env.*.local
+!.env.example
+
+# ─── Google / Vertex AI keys — NEVER commit ──────────────────
+*.json.key
+*service_account*.json
+*-credentials.json
+VertexKeys/
+
+# ─── Python ──────────────────────────────────────────────────
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.venv/
+venv/
+.pytest_cache/
+*.egg-info/
+
+# ─── Go ──────────────────────────────────────────────────────
+*.exe
+*.test
+vendor/
+
+# ─── Docker ──────────────────────────────────────────────────
+.docker/
+
+# ─── OS ──────────────────────────────────────────────────────
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# ─── IDE ─────────────────────────────────────────────────────
+.vscode/settings.json
+.idea/
+*.swp
+*.swo
+
+# ─── Logs ────────────────────────────────────────────────────
+*.log
+logs/
+
+# ─── Test coverage ───────────────────────────────────────────
+coverage/
+.nyc_output/
+
+# ─── Turbo cache ─────────────────────────────────────────────
+.turbo/

@@ -1,0 +1,7 @@
+packages:
+  - 'apps/frontend'
+  - 'apps/collab-service'
+  - 'apps/api-service'
+  - 'apps/messaging-service'
+  - 'packages/shared-types'
+  - 'packages/kafka-schemas'

@@ -1,0 +1,382 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/>
+<title>CTM Architecture A vs C Comparison</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: 'Segoe UI', Arial, sans-serif; background: #f8f9fb; padding: 24px; }
+
+  h2.sr-only { position:absolute; width:1px; height:1px; overflow:hidden; clip:rect(0,0,0,0); }
+
+  .page-title {
+    text-align: center;
+    font-size: 20px;
+    font-weight: 700;
+    color: #1a1a2e;
+    margin-bottom: 4px;
+    letter-spacing: .3px;
+  }
+  .page-sub {
+    text-align: center;
+    font-size: 13px;
+    color: #666;
+    margin-bottom: 22px;
+  }
+
+  .cols { display: grid; grid-template-columns: 1fr 1fr; gap: 18px; margin-bottom: 18px; }
+
+  .arch-panel {
+    background: #fff;
+    border-radius: 10px;
+    border: 2px solid #e0e4ef;
+    overflow: hidden;
+    display: flex;
+    flex-direction: column;
+  }
+  .arch-panel.winner { border-color: #27ae60; box-shadow: 0 0 0 3px #d5f5e3; }
+
+  .arch-header {
+    padding: 11px 16px;
+    color: #fff;
+    font-size: 14px;
+    font-weight: 700;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+  .arch-header .badge {
+    background: rgba(255,255,255,0.25);
+    border-radius: 4px;
+    padding: 2px 8px;
+    font-size: 11px;
+    font-weight: 600;
+  }
+
+  .arch-a-color { background: #2e75b6; }
+  .arch-c-color { background: #27ae60; }
+
+  .diagram-area { padding: 16px 14px; flex: 1; }
+
+  .layer {
+    display: flex;
+    align-items: stretch;
+    gap: 6px;
+    margin-bottom: 6px;
+  }
+  .layer-label {
+    width: 72px;
+    flex-shrink: 0;
+    font-size: 10px;
+    font-weight: 600;
+    color: #888;
+    text-transform: uppercase;
+    letter-spacing: .4px;
+    display: flex;
+    align-items: center;
+    padding-right: 4px;
+  }
+  .nodes { display: flex; gap: 5px; flex: 1; flex-wrap: wrap; }
+
+  .node {
+    flex: 1;
+    min-width: 70px;
+    border-radius: 6px;
+    padding: 7px 8px;
+    font-size: 11px;
+    font-weight: 600;
+    line-height: 1.3;
+    text-align: center;
+    border: 1.5px solid transparent;
+  }
+
+  .n-blue    { background: #dbeafe; border-color: #93c5fd; color: #1e40af; }
+  .n-green   { background: #d1fae5; border-color: #6ee7b7; color: #065f46; }
+  .n-amber   { background: #fef3c7; border-color: #fcd34d; color: #92400e; }
+  .n-purple  { background: #ede9fe; border-color: #c4b5fd; color: #5b21b6; }
+  .n-gray    { background: #f3f4f6; border-color: #d1d5db; color: #374151; }
+  .n-teal    { background: #ccfbf1; border-color: #5eead4; color: #134e4a; }
+  .n-sky     { background: #e0f2fe; border-color: #7dd3fc; color: #0c4a6e; }
+
+  .node .sub { font-size: 9.5px; font-weight: 400; opacity: .75; display: block; margin-top: 1px; }
+
+  .down-arrow {
+    text-align: center;
+    font-size: 12px;
+    color: #94a3b8;
+    line-height: 1;
+    margin: 2px 0;
+    padding-left: 78px;
+  }
+
+  .risk-chip {
+    display: inline-block;
+    border-radius: 4px;
+    padding: 2px 8px;
+    font-size: 10px;
+    font-weight: 700;
+    letter-spacing: .3px;
+    margin-left: 6px;
+  }
+  .risk-high   { background: #fee2e2; color: #991b1b; }
+  .risk-medium { background: #fef3c7; color: #92400e; }
+  .risk-low    { background: #d1fae5; color: #065f46; }
+
+  .scorecard {
+    background: #fff;
+    border-radius: 10px;
+    border: 2px solid #e0e4ef;
+    overflow: hidden;
+    margin-bottom: 18px;
+  }
+  .sc-header {
+    background: #1a1a2e;
+    color: #fff;
+    font-size: 14px;
+    font-weight: 700;
+    padding: 10px 16px;
+  }
+  table.sc-table { width: 100%; border-collapse: collapse; font-size: 12px; }
+  table.sc-table thead tr { background: #f3f4f6; }
+  table.sc-table th { padding: 8px 12px; text-align: left; font-weight: 700; color: #374151; border-bottom: 2px solid #e5e7eb; }
+  table.sc-table th.center, table.sc-table td.center { text-align: center; }
+  table.sc-table td { padding: 8px 12px; border-bottom: 1px solid #f3f4f6; color: #374151; vertical-align: middle; }
+  table.sc-table tr:last-child td { border-bottom: none; }
+  table.sc-table tr:hover td { background: #f9fafb; }
+
+  .bar-wrap { display: flex; align-items: center; gap: 6px; justify-content: center; }
+  .bar { height: 8px; border-radius: 4px; display: inline-block; }
+  .bar-a  { background: #2e75b6; }
+  .bar-c  { background: #27ae60; }
+
+  .verdict {
+    background: linear-gradient(135deg, #eafaf1, #d5f5e3);
+    border: 2px solid #27ae60;
+    border-radius: 10px;
+    padding: 14px 18px;
+    display: flex;
+    align-items: center;
+    gap: 16px;
+  }
+  .verdict-icon { font-size: 36px; flex-shrink: 0; }
+  .verdict-text h3 { font-size: 15px; font-weight: 700; color: #065f46; margin-bottom: 4px; }
+  .verdict-text p  { font-size: 13px; color: #374151; line-height: 1.6; }
+</style>
+</head>
+<body>
+<h2 class="sr-only">Architecture A vs Architecture C structure diagram comparing technology choices, risks, and scores across key dimensions</h2>
+
+<div class="page-title">Architecture Comparison: A vs C</div>
+<div class="page-sub">Structure Diagram · CTM Cloud Collaborative Spreadsheet Platform · May 2026</div>
+
+<!-- ═══ TWO ARCH DIAGRAMS ═══ -->
+<div class="cols">
+
+  <!-- ── ARCH A ── -->
+  <div class="arch-panel">
+    <div class="arch-header arch-a-color">
+      <span>Architecture A</span>
+      <span class="badge">Grist-Inspired</span>
+    </div>
+    <div class="diagram-area">
+
+      <div class="layer">
+        <div class="layer-label">Client</div>
+        <div class="nodes">
+          <div class="node n-blue">Next.js + React<span class="sub">Canvas Grid (Grist UI)</span></div>
+        </div>
+      </div>
+      <div class="down-arrow">↓ WebSocket (OT)</div>
+
+      <div class="layer">
+        <div class="layer-label">API</div>
+        <div class="nodes">
+          <div class="node n-blue">Node.js / Fastify<span class="sub">REST — Smartsheet-compat.</span></div>
+        </div>
+      </div>
+      <div class="down-arrow">↓</div>
+
+      <div class="layer">
+        <div class="layer-label">Core</div>
+        <div class="nodes">
+          <div class="node n-amber">Python Sandbox<span class="sub">Grist Formula Engine</span></div>
+          <div class="node n-blue">OT Sync Engine<span class="sub">Server-authoritative</span></div>
+        </div>
+      </div>
+      <div class="down-arrow">↓</div>
+
+      <div class="layer">
+        <div class="layer-label">Services</div>
+        <div class="nodes">
+          <div class="node n-purple">Workflow<span class="sub">Node.js</span></div>
+          <div class="node n-teal">LLM Layer<span class="sub">Claude API</span></div>
+          <div class="node n-sky">Messaging<span class="sub">Node.js</span></div>
+        </div>
+      </div>
+      <div class="down-arrow">↓</div>
+
+      <div class="layer">
+        <div class="layer-label">Data</div>
+        <div class="nodes">
+          <div class="node n-gray">PostgreSQL</div>
+          <div class="node n-gray">Redis</div>
+          <div class="node n-gray">S3</div>
+        </div>
+      </div>
+
+      <div style="margin-top:14px; border-top:1px solid #f3f4f6; padding-top:12px;">
+        <div style="font-size:10px; font-weight:700; color:#888; text-transform:uppercase; margin-bottom:6px;">Key Risks</div>
+        <div style="font-size:11px; margin-bottom:4px; color:#374151;">OT sync bottleneck at scale <span class="risk-chip risk-high">HIGH</span></div>
+        <div style="font-size:11px; margin-bottom:4px; color:#374151;">Python sandbox ops overhead <span class="risk-chip risk-medium">MED</span></div>
+        <div style="font-size:11px; margin-bottom:4px; color:#374151;">Grist UI rework needed <span class="risk-chip risk-medium">MED</span></div>
+        <div style="font-size:11px; color:#374151;">License (Apache 2.0) <span class="risk-chip risk-low">LOW</span></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ── ARCH C ── -->
+  <div class="arch-panel winner">
+    <div class="arch-header arch-c-color">
+      <span>Architecture C</span>
+      <span class="badge">⭐ Recommended</span>
+    </div>
+    <div class="diagram-area">
+
+      <div class="layer">
+        <div class="layer-label">Client</div>
+        <div class="nodes">
+          <div class="node n-green">Next.js + React<span class="sub">Custom WebGL Grid</span></div>
+        </div>
+      </div>
+      <div class="down-arrow">↓ Yjs CRDT WebSocket</div>
+
+      <div class="layer">
+        <div class="layer-label">API</div>
+        <div class="nodes">
+          <div class="node n-green">Fastify Gateway<span class="sub">REST + MCP Server</span></div>
+        </div>
+      </div>
+      <div class="down-arrow">↓</div>
+
+      <div class="layer">
+        <div class="layer-label">Core</div>
+        <div class="nodes">
+          <div class="node n-green">Hyperformula<span class="sub">MIT · 400+ Excel fns</span></div>
+          <div class="node n-teal">Yjs + Hocuspocus<span class="sub">CRDT Collab. Engine</span></div>
+        </div>
+      </div>
+      <div class="down-arrow">↓ Kafka event bus</div>
+
+      <div class="layer">
+        <div class="layer-label">Services</div>
+        <div class="nodes">
+          <div class="node n-purple">Go PM<span class="sub">Gantt·Kanban·Approvals</span></div>
+          <div class="node n-teal">LLM + RAG<span class="sub">LangGraph · pgvector</span></div>
+          <div class="node n-sky">Messaging<span class="sub">Node.js</span></div>
+        </div>
+      </div>
+      <div class="down-arrow">↓</div>
+
+      <div class="layer">
+        <div class="layer-label">Data</div>
+        <div class="nodes">
+          <div class="node n-gray">PostgreSQL<span class="sub">+ pgvector</span></div>
+          <div class="node n-gray">Redis</div>
+          <div class="node n-gray">Kafka</div>
+          <div class="node n-gray">S3</div>
+        </div>
+      </div>
+
+      <div style="margin-top:14px; border-top:1px solid #f3f4f6; padding-top:12px;">
+        <div style="font-size:10px; font-weight:700; color:#888; text-transform:uppercase; margin-bottom:6px;">Key Risks</div>
+        <div style="font-size:11px; margin-bottom:4px; color:#374151;">Longer time to MVP (5–6 mo) <span class="risk-chip risk-medium">MED</span></div>
+        <div style="font-size:11px; margin-bottom:4px; color:#374151;">Microservice ops complexity <span class="risk-chip risk-medium">MED</span></div>
+        <div style="font-size:11px; margin-bottom:4px; color:#374151;">Larger team required <span class="risk-chip risk-medium">MED</span></div>
+        <div style="font-size:11px; color:#374151;">License risk (all MIT) <span class="risk-chip risk-low">NONE</span></div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ═══ SCORECARD ═══ -->
+<div class="scorecard">
+  <div class="sc-header">Dimension Scorecard (1 = poor · 5 = excellent)</div>
+  <table class="sc-table">
+    <thead>
+      <tr>
+        <th style="width:30%">Dimension</th>
+        <th class="center" style="width:16%">Arch A Score</th>
+        <th class="center" style="width:16%">Arch C Score</th>
+        <th style="width:38%">Key Differentiator</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td><strong>Real-time Collaboration</strong></td>
+        <td class="center"><div class="bar-wrap"><div class="bar bar-a" style="width:48px"></div><span style="font-size:11px;color:#2e75b6">3/5</span></div></td>
+        <td class="center"><div class="bar-wrap"><div class="bar bar-c" style="width:80px"></div><span style="font-size:11px;color:#27ae60">5/5</span></div></td>
+        <td style="font-size:11px;">Yjs CRDTs vs OT — CRDTs win at high concurrency &amp; offline-first</td>
+      </tr>
+      <tr>
+        <td><strong>Formula Engine</strong></td>
+        <td class="center"><div class="bar-wrap"><div class="bar bar-a" style="width:64px"></div><span style="font-size:11px;color:#2e75b6">4/5</span></div></td>
+        <td class="center"><div class="bar-wrap"><div class="bar bar-c" style="width:80px"></div><span style="font-size:11px;color:#27ae60">5/5</span></div></td>
+        <td style="font-size:11px;">Hyperformula (MIT, 400+ fns) vs Python sandbox — C has no runtime overhead</td>
+      </tr>
+      <tr>
+        <td><strong>AI / LLM Integration</strong></td>
+        <td class="center"><div class="bar-wrap"><div class="bar bar-a" style="width:48px"></div><span style="font-size:11px;color:#2e75b6">3/5</span></div></td>
+        <td class="center"><div class="bar-wrap"><div class="bar bar-c" style="width:80px"></div><span style="font-size:11px;color:#27ae60">5/5</span></div></td>
+        <td style="font-size:11px;">Arch C: native =AI.QUERY() formulas, MCP server, LangGraph agents, pgvector RAG</td>
+      </tr>
+      <tr>
+        <td><strong>Project Management</strong></td>
+        <td class="center"><div class="bar-wrap"><div class="bar bar-a" style="width:48px"></div><span style="font-size:11px;color:#2e75b6">3/5</span></div></td>
+        <td class="center"><div class="bar-wrap"><div class="bar bar-c" style="width:64px"></div><span style="font-size:11px;color:#27ae60">4/5</span></div></td>
+        <td style="font-size:11px;">Both custom; C uses dedicated Go microservice for higher throughput</td>
+      </tr>
+      <tr>
+        <td><strong>Smartsheet API Parity</strong></td>
+        <td class="center"><div class="bar-wrap"><div class="bar bar-a" style="width:64px"></div><span style="font-size:11px;color:#2e75b6">4/5</span></div></td>
+        <td class="center"><div class="bar-wrap"><div class="bar bar-c" style="width:80px"></div><span style="font-size:11px;color:#27ae60">5/5</span></div></td>
+        <td style="font-size:11px;">C designed from the Smartsheet spec + includes MCP server matching Smartsheet's own AI offering</td>
+      </tr>
+      <tr>
+        <td><strong>Scalability</strong></td>
+        <td class="center"><div class="bar-wrap"><div class="bar bar-a" style="width:48px"></div><span style="font-size:11px;color:#2e75b6">3/5</span></div></td>
+        <td class="center"><div class="bar-wrap"><div class="bar bar-c" style="width:80px"></div><span style="font-size:11px;color:#27ae60">5/5</span></div></td>
+        <td style="font-size:11px;">Independent service scaling via K8s; OT in A is a single-point bottleneck</td>
+      </tr>
+      <tr>
+        <td><strong>License Safety</strong></td>
+        <td class="center"><div class="bar-wrap"><div class="bar bar-a" style="width:64px"></div><span style="font-size:11px;color:#2e75b6">4/5</span></div></td>
+        <td class="center"><div class="bar-wrap"><div class="bar bar-c" style="width:80px"></div><span style="font-size:11px;color:#27ae60">5/5</span></div></td>
+        <td style="font-size:11px;">All MIT in C (Yjs, Hyperformula, Next.js); A inherits Apache 2.0 from Grist fork</td>
+      </tr>
+      <tr>
+        <td><strong>Time to MVP</strong></td>
+        <td class="center"><div class="bar-wrap"><div class="bar bar-a" style="width:80px"></div><span style="font-size:11px;color:#2e75b6">5/5</span></div></td>
+        <td class="center"><div class="bar-wrap"><div class="bar bar-c" style="width:48px"></div><span style="font-size:11px;color:#27ae60">3/5</span></div></td>
+        <td style="font-size:11px;">A wins here — fork Grist for 3-mo MVP vs 5–6 mo for C</td>
+      </tr>
+      <tr style="background:#f0fdf4;">
+        <td><strong>Total</strong></td>
+        <td class="center"><strong style="color:#2e75b6;font-size:14px;">29 / 40</strong></td>
+        <td class="center"><strong style="color:#27ae60;font-size:14px;">37 / 40</strong></td>
+        <td style="font-size:11px;font-weight:600;">Architecture C leads in 7 of 8 dimensions</td>
+      </tr>
+    </tbody>
+  </table>
+</div>
+
+<!-- ═══ VERDICT ═══ -->
+<div class="verdict">
+  <div class="verdict-icon">🏆</div>
+  <div class="verdict-text">
+    <h3>Verdict: Architecture C — Greenfield Microservices</h3>
+    <p>Arch C scores <strong>37/40</strong> vs Arch A's <strong>29/40</strong>. It wins on real-time sync (Yjs CRDTs), AI-nativeness (MCP server + LangGraph + pgvector), scalability (independent K8s services), and license safety (all MIT). Arch A's only advantage is a faster MVP (3 mo vs 5–6 mo) — use Arch A only if you need to ship in &lt;3 months, then migrate to C.</p>
+  </div>
+</div>
+
+</body>
+</html>

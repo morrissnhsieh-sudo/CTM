@@ -1,0 +1,99 @@
+{
+  "realm": "ctm",
+  "enabled": true,
+  "displayName": "CTM Platform",
+  "sslRequired": "external",
+  "registrationAllowed": false,
+  "loginWithEmailAllowed": true,
+  "duplicateEmailsAllowed": false,
+  "accessTokenLifespan": 900,
+  "accessTokenLifespanForImplicitFlow": 900,
+  "ssoSessionIdleTimeout": 1800,
+  "ssoSessionMaxLifespan": 36000,
+  "offlineSessionIdleTimeout": 2592000,
+  "refreshTokenMaxReuse": 0,
+  "clients": [
+    {
+      "clientId": "ctm-web",
+      "name": "CTM Web Application",
+      "enabled": true,
+      "publicClient": true,
+      "standardFlowEnabled": true,
+      "implicitFlowEnabled": false,
+      "directAccessGrantsEnabled": false,
+      "serviceAccountsEnabled": false,
+      "attributes": {
+        "pkce.code.challenge.method": "S256"
+      },
+      "redirectUris": [
+        "http://localhost:3000/api/auth/callback/keycloak",
+        "https://app.ctm.app/api/auth/callback/keycloak"
+      ],
+      "webOrigins": [
+        "http://localhost:3000",
+        "https://app.ctm.app"
+      ],
+      "defaultClientScopes": ["openid", "profile", "email"],
+      "optionalClientScopes": ["address", "phone"]
+    },
+    {
+      "clientId": "ctm-api",
+      "name": "CTM API Service",
+      "enabled": true,
+      "publicClient": false,
+      "standardFlowEnabled": false,
+      "serviceAccountsEnabled": true,
+      "secret": "ctm-api-dev-secret"
+    },
+    {
+      "clientId": "ctm-mcp",
+      "name": "CTM MCP Client",
+      "enabled": true,
+      "publicClient": true,
+      "standardFlowEnabled": true,
+      "attributes": {
+        "pkce.code.challenge.method": "S256"
+      },
+      "redirectUris": [
+        "http://localhost:3001/mcp/auth/callback",
+        "https://api.ctm.app/mcp/auth/callback"
+      ]
+    }
+  ],
+  "roles": {
+    "realm": [
+      { "name": "OWNER", "description": "Full workspace control" },
+      { "name": "ADMIN", "description": "Admin access" },
+      { "name": "EDITOR", "description": "Read + write" },
+      { "name": "COMMENTER", "description": "Read + comment" },
+      { "name": "VIEWER", "description": "Read only" }
+    ]
+  },
+  "defaultRoles": ["VIEWER"],
+  "users": [
+    {
+      "username": "admin@ctm.app",
+      "email": "admin@ctm.app",
+      "firstName": "Admin",
+      "lastName": "User",
+      "enabled": true,
+      "emailVerified": true,
+      "credentials": [
+        { "type": "password", "value": "admin123", "temporary": false }
+      ],
+      "realmRoles": ["OWNER"]
+    },
+    {
+      "username": "demo@ctm.app",
+      "email": "demo@ctm.app",
+      "firstName": "Demo",
+      "lastName": "User",
+      "enabled": true,
+      "emailVerified": true,
+      "credentials": [
+        { "type": "password", "value": "demo123", "temporary": false }
+      ],
+      "realmRoles": ["EDITOR"]
+    }
+  ]
+}
