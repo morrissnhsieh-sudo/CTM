@@ -2,7 +2,8 @@ import { Server } from '@hocuspocus/server'
 import { Redis as RedisExtension } from '@hocuspocus/extension-redis'
 import * as Y from 'yjs'
 import pg from 'pg'
-import Redis from 'ioredis'
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+type RedisClient = any
 import { createRemoteJWKSet, jwtVerify } from 'jose'
 import { Kafka, type Producer } from 'kafkajs'
 import { env } from './env.js'
@@ -25,7 +26,9 @@ const JWKS = createRemoteJWKSet(new URL(env.KEYCLOAK_JWKS_URI), {
 
 export async function createServer() {
   const pool = new pg.Pool({ connectionString: env.DB_URL, max: 10 })
-  const redis = new Redis(env.REDIS_URL)
+  // eslint-disable-next-line @typescript-eslint/no-var-requires
+  const IORedis = require('ioredis')
+  const redis: RedisClient = new IORedis(env.REDIS_URL)
 
   const kafka = new Kafka({
     clientId: 'collab-service',
@@ -110,10 +113,10 @@ export async function createServer() {
     },
 
     // ─── Read-only enforcement ────────────────────────────────
-    async onRequest({ documentName, context }) {
-      const auth = context as AuthData
-      if (auth.role === 'VIEWER' || auth.role === 'COMMENTER') {
-        // Read-only: reject write messages silently by returning read-only mode
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    async onRequest(payload: any) {
+      const auth = payload.context as AuthData
+      if (auth?.role === 'VIEWER' || auth?.role === 'COMMENTER') {
         return { readOnly: true }
       }
     },

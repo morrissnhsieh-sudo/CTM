@@ -125,17 +125,16 @@ func (r *postgresTaskRepository) DeleteTask(ctx context.Context, id string) erro
 }
 
 func (r *postgresTaskRepository) UpdateCPMResults(ctx context.Context, projectID string, results []*Task) error {
-	batch := r.pool.SendBatch(ctx, nil)
-	defer batch.Close()
-
 	for _, t := range results {
-		batch.Queue(
+		_, err := r.pool.Exec(ctx,
 			`UPDATE pm.tasks SET is_critical=$2, float_days=$3, updated_at=NOW() WHERE id=$1`,
 			t.ID, t.IsCritical, t.FloatDays,
 		)
+		if err != nil {
+			return err
+		}
 	}
-
-	return batch.Close()
+	return nil
 }
 
 // ─── Approval Repository ──────────────────────────────────────────────────────

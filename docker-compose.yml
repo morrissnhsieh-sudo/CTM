@@ -1,6 +1,5 @@
-version: "3.9"
-
-# CTM Platform — Full local development stack
+﻿
+# CTM Platform ??Full local development stack
 # Run: docker compose up -d
 # All 10 modules + dependencies in < 2 minutes.
 
@@ -17,7 +16,7 @@ volumes:
 
 services:
 
-  # ─── M9: PostgreSQL 16 + pgvector ────────────────────────────────────────────
+  # ??? M9: PostgreSQL 16 + pgvector ????????????????????????????????????????????
   postgres:
     image: pgvector/pgvector:pg16
     container_name: ctm-postgres
@@ -39,7 +38,7 @@ services:
       retries: 10
     networks: [ctm-net]
 
-  # ─── M9: Redis 7.2 ───────────────────────────────────────────────────────────
+  # ??? M9: Redis 7.2 ???????????????????????????????????????????????????????????
   redis:
     image: redis:7.2-alpine
     container_name: ctm-redis
@@ -54,7 +53,7 @@ services:
       retries: 5
     networks: [ctm-net]
 
-  # ─── M8: Kafka 3.7 (KRaft mode — no ZooKeeper) ───────────────────────────────
+  # ??? M8: Kafka 3.7 (KRaft mode ??no ZooKeeper) ???????????????????????????????
   kafka:
     image: apache/kafka:3.7.0
     container_name: ctm-kafka
@@ -83,7 +82,7 @@ services:
       retries: 10
     networks: [ctm-net]
 
-  # ─── Kafka UI ─────────────────────────────────────────────────────────────────
+  # ??? Kafka UI ?????????????????????????????????????????????????????????????????
   kafka-ui:
     image: provectuslabs/kafka-ui:latest
     container_name: ctm-kafka-ui
@@ -97,7 +96,7 @@ services:
         condition: service_healthy
     networks: [ctm-net]
 
-  # ─── M9: MinIO (S3-compatible) ────────────────────────────────────────────────
+  # ??? M9: MinIO (S3-compatible) ????????????????????????????????????????????????
   minio:
     image: minio/minio:latest
     container_name: ctm-minio
@@ -134,7 +133,7 @@ services:
       "
     networks: [ctm-net]
 
-  # ─── M10: Keycloak 24 ────────────────────────────────────────────────────────
+  # ??? M10: Keycloak 24 ????????????????????????????????????????????????????????
   keycloak:
     image: quay.io/keycloak/keycloak:24.0
     container_name: ctm-keycloak
@@ -159,17 +158,17 @@ services:
       postgres:
         condition: service_healthy
     healthcheck:
-      test: ["CMD-SHELL", "curl -sf http://localhost:8080/health/ready"]
+      test: ["CMD-SHELL", "exec 3<>/dev/tcp/localhost/8080 && echo -e 'GET /health/ready HTTP/1.0\r\n\r\n' >&3 && cat <&3 | grep -q 'UP'"]
       interval: 15s
       timeout: 10s
       retries: 20
     networks: [ctm-net]
 
-  # ─── M2: Collaboration Engine ─────────────────────────────────────────────────
+  # ??? M2: Collaboration Engine ?????????????????????????????????????????????????
   collab-service:
     build:
-      context: ./apps/collab-service
-      dockerfile: Dockerfile
+      context: .
+      dockerfile: apps/collab-service/Dockerfile
     container_name: ctm-collab
     environment:
       NODE_ENV: development
@@ -188,11 +187,11 @@ services:
       keycloak: { condition: service_healthy }
     networks: [ctm-net]
 
-  # ─── M3+M4: API Gateway + Formula Engine ─────────────────────────────────────
+  # ??? M3+M4: API Gateway + Formula Engine ?????????????????????????????????????
   api-service:
     build:
-      context: ./apps/api-service
-      dockerfile: Dockerfile
+      context: .
+      dockerfile: apps/api-service/Dockerfile
     container_name: ctm-api
     environment:
       NODE_ENV: development
@@ -217,11 +216,11 @@ services:
       kafka: { condition: service_healthy }
     networks: [ctm-net]
 
-  # ─── M5: PM Service (Go) ──────────────────────────────────────────────────────
+  # ??? M5: PM Service (Go) ??????????????????????????????????????????????????????
   pm-service:
     build:
-      context: ./apps/pm-service
-      dockerfile: Dockerfile
+      context: .
+      dockerfile: apps/pm-service/Dockerfile
     container_name: ctm-pm
     environment:
       DB_URL: postgresql://ctm:ctm_dev_pass@postgres:5432/ctm
@@ -237,28 +236,28 @@ services:
       kafka: { condition: service_healthy }
     networks: [ctm-net]
 
-  # ─── M6: AI Agent Service (Python) ───────────────────────────────────────────
+  # ??? M6: AI Agent Service (Python) ???????????????????????????????????????????
   ai-service:
     build:
-      context: ./apps/ai-service
-      dockerfile: Dockerfile
+      context: .
+      dockerfile: apps/ai-service/Dockerfile
     container_name: ctm-ai
     environment:
       PORT: "8001"
       DB_URL: postgresql+asyncpg://ctm:ctm_dev_pass@postgres:5432/ctm
       REDIS_URL: redis://redis:6379
       KAFKA_BROKERS: kafka:9092
-      # ── Vertex AI (primary) ──────────────────────────────────
+      # ?? Vertex AI (primary) ??????????????????????????????????
       LLM_PROVIDER: vertex
       GOOGLE_APPLICATION_CREDENTIALS: /run/secrets/vertex_key.json
       VERTEX_PROJECT_ID: d-sxd110x-ssd1-aaos
       VERTEX_REGION: us-east5
       VERTEX_MODEL_PRIMARY: claude-sonnet-4-5@20241022
       VERTEX_MODEL_AGENT: claude-opus-4-5@20240801
-      # ── Fallback keys (optional) ─────────────────────────────
+      # ?? Fallback keys (optional) ?????????????????????????????
       ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
       OPENAI_API_KEY: ${OPENAI_API_KEY:-}
-      # ── Service endpoints ────────────────────────────────────
+      # ?? Service endpoints ????????????????????????????????????
       CTM_API_URL: http://api-service:3001
       FORMULA_CALLBACK_URL: http://api-service:3001/v1/ai/formula/callback
     volumes:
@@ -272,11 +271,11 @@ services:
       kafka: { condition: service_healthy }
     networks: [ctm-net]
 
-  # ─── M7: Messaging Service ────────────────────────────────────────────────────
+  # ??? M7: Messaging Service ????????????????????????????????????????????????????
   messaging-service:
     build:
-      context: ./apps/messaging-service
-      dockerfile: Dockerfile
+      context: .
+      dockerfile: apps/messaging-service/Dockerfile
     container_name: ctm-messaging
     environment:
       NODE_ENV: development
@@ -295,11 +294,11 @@ services:
       kafka: { condition: service_healthy }
     networks: [ctm-net]
 
-  # ─── M1: Frontend (Next.js 15) ────────────────────────────────────────────────
+  # ??? M1: Frontend (Next.js 15) ????????????????????????????????????????????????
   frontend:
     build:
-      context: ./apps/frontend
-      dockerfile: Dockerfile
+      context: .
+      dockerfile: apps/frontend/Dockerfile
       target: development
     container_name: ctm-frontend
     environment:
@@ -321,3 +320,9 @@ services:
       - /app/node_modules
       - /app/.next
     networks: [ctm-net]
+
+
+
+
+
+

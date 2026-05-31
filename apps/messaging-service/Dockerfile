@@ -1,24 +1,20 @@
-FROM node:22-alpine AS base
+# Build context = repo root — single stage
+FROM node:22-alpine
 WORKDIR /app
 RUN corepack enable pnpm
 
-FROM base AS deps
-COPY package.json pnpm-lock.yaml* ./
+COPY package.json pnpm-lock.yaml* pnpm-workspace.yaml tsconfig.base.json ./
 COPY packages/shared-types/package.json ./packages/shared-types/
+COPY packages/shared-types/tsconfig.json ./packages/shared-types/
+COPY packages/shared-types/src/ ./packages/shared-types/src/
 COPY apps/messaging-service/package.json ./apps/messaging-service/
-RUN pnpm install --frozen-lockfile
+COPY apps/messaging-service/tsconfig.json ./apps/messaging-service/
+COPY apps/messaging-service/src/ ./apps/messaging-service/src/
 
-FROM deps AS builder
-COPY . .
+RUN pnpm install --frozen-lockfile
 RUN pnpm -F @ctm/shared-types build
 RUN pnpm -F @ctm/messaging-service build
 
-FROM node:22-alpine AS production
-WORKDIR /app
-RUN corepack enable pnpm
-COPY --from=builder /app/apps/messaging-service/dist ./dist
-COPY --from=builder /app/apps/messaging-service/package.json .
-COPY --from=builder /app/node_modules ./node_modules
-
+WORKDIR /app/apps/messaging-service
 EXPOSE 3002
 CMD ["node", "dist/index.js"]

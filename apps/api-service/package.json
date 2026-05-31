@@ -1,8 +1,7 @@
-{
+﻿{
   "name": "@ctm/api-service",
   "version": "0.1.0",
   "private": true,
-  "type": "module",
   "main": "./dist/index.js",
   "scripts": {
     "dev": "tsx watch src/index.ts",
@@ -52,3 +51,4 @@
     "drizzle-kit": "^0.30.0"
   }
 }
+

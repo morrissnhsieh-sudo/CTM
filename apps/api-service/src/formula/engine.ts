@@ -1,9 +1,5 @@
-import {
-  HyperFormula,
-  type DetailedCellError,
-  type ExportedCellChange,
-  ConfigValueType,
-} from 'hyperformula'
+import HyperFormula from 'hyperformula'
+import type { DetailedCellError, ExportedCellChange } from 'hyperformula'
 import { Mutex } from 'async-mutex'
 import { Decimal } from 'decimal.js'
 import type { CellDiff, CellValue } from '@ctm/shared-types'
@@ -11,32 +7,33 @@ import type { AiFormulaEvalRequest } from '@ctm/shared-types'
 
 // Per-sheet HyperFormula instance + mutex
 interface SheetInstance {
-  hf: HyperFormula
+  hf: InstanceType<typeof HyperFormula>
   mutex: Mutex
   lastAccess: number
 }
 
 const AI_FUNCTION_NAMES = ['AI.QUERY', 'AI.SUMMARIZE', 'AI.CLASSIFY', 'AI.EXTRACT']
 const LOADING_SENTINEL = '#LOADING...'
-const AI_FUNCTIONS_LOADING = Object.fromEntries(
-  AI_FUNCTION_NAMES.map(name => [name, () => LOADING_SENTINEL]),
-)
 
-// Custom CTM formula plugins
-const CTMPlugin = {
+// Simplified CTM plugin — avoids ConfigValueType which changed between HF versions
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+const CTMPlugin: any = {
   implementedFunctions: {
-    ...AI_FUNCTIONS_LOADING,
-    'TIMETRACKED': { method: 'timetracked', parameters: [{ argumentType: ConfigValueType.STRING }] },
-    'APPROVAL_STATUS': { method: 'approvalStatus', parameters: [{ argumentType: ConfigValueType.STRING }] },
-    'LINKED_VALUE': { method: 'linkedValue', parameters: [
-      { argumentType: ConfigValueType.STRING },
-      { argumentType: ConfigValueType.STRING },
-      { argumentType: ConfigValueType.STRING },
-    ]},
+    'AI_QUERY':        { method: 'aiQuery' },
+    'AI_SUMMARIZE':    { method: 'aiSummarize' },
+    'AI_CLASSIFY':     { method: 'aiClassify' },
+    'AI_EXTRACT':      { method: 'aiExtract' },
+    'TIMETRACKED':     { method: 'timetracked' },
+    'APPROVAL_STATUS': { method: 'approvalStatus' },
+    'LINKED_VALUE':    { method: 'linkedValue' },
   },
-  timetracked: () => 0,
+  aiQuery:        () => LOADING_SENTINEL,
+  aiSummarize:    () => LOADING_SENTINEL,
+  aiClassify:     () => LOADING_SENTINEL,
+  aiExtract:      () => LOADING_SENTINEL,
+  timetracked:    () => 0,
   approvalStatus: () => 'UNKNOWN',
-  linkedValue: () => null,
+  linkedValue:    () => null,
 }
 for (const fn of AI_FUNCTION_NAMES) {
   ;(CTMPlugin as Record<string, unknown>)[fn.replace('.', '_').toLowerCase()] = () => LOADING_SENTINEL
@@ -138,7 +135,7 @@ export class FormulaEngine {
         functionPlugins: [CTMPlugin],
       })
       hf.addSheet('validation')
-      hf.setCellContents({ sheet: 0, row: 0, col: 0 }, [[{ formula }]])
+      hf.setCellContents({ sheet: 0, row: 0, col: 0 }, [[formula]])
       const result = hf.getCellValue({ sheet: 0, row: 0, col: 0 })
       hf.destroy()
 
@@ -175,9 +172,7 @@ export class FormulaEngine {
     if (cellData.length > 0) {
       hf.suspendEvaluation()
       for (const cell of cellData) {
-        const content = cell.formula
-          ? { formula: cell.formula }
-          : this.parseLiteralValue(cell.value ?? '')
+        const content = cell.formula ?? cell.value ?? null
         hf.setCellContents(
           { sheet: sheetIndex, row: cell.rowIdx, col: cell.colIdx },
           [[content]],
@@ -196,7 +191,8 @@ export class FormulaEngine {
     return instance
   }
 
-  private getSheetIndex(hf: HyperFormula): number {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  private getSheetIndex(hf: any): number {
     const sheets = hf.getSheetNames()
     return sheets.length > 0 ? 0 : hf.addSheet('sheet')
   }
@@ -204,7 +200,8 @@ export class FormulaEngine {
   /** Maps rowId/colId to 0-indexed integer coordinates using a stable hash map */
   private rowMap = new Map<string, Map<string, [number, number]>>()
 
-  private parseRef(rowId: string, colId: string, hf: HyperFormula, sheetId: string): [number, number] {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  private parseRef(rowId: string, colId: string, hf: any, sheetId: string): [number, number] {
     const key = `${rowId}::${colId}`
     if (!this.rowMap.has(sheetId)) this.rowMap.set(sheetId, new Map())
     const map = this.rowMap.get(sheetId)!
@@ -219,25 +216,22 @@ export class FormulaEngine {
     return map.get(key)!
   }
 
-  private parseLiteralValue(raw: string): { cellValue: CellValue } {
-    if (raw === '' || raw === null) return { cellValue: null }
-    if (raw === 'TRUE' || raw === 'true') return { cellValue: true }
-    if (raw === 'FALSE' || raw === 'false') return { cellValue: false }
+  private parseLiteralValue(raw: string): CellValue {
+    if (!raw || raw === '') return null
+    if (raw === 'TRUE' || raw === 'true') return true
+    if (raw === 'FALSE' || raw === 'false') return false
 
     const num = Number(raw)
     if (!isNaN(num) && raw.trim() !== '') {
       // Use decimal.js for currency-like values with many decimal places
-      return { cellValue: num }
+      return num
     }
 
-    return { cellValue: raw }
+    return raw
   }
 
-  private changesToDiff(
-    changes: readonly ExportedCellChange[],
-    hf: HyperFormula,
-    sheetIndex: number,
-  ): CellDiff[] {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  private changesToDiff(changes: any[], hf: any, sheetIndex: number): CellDiff[] {
     return changes
       .filter(c => c.sheet === sheetIndex)
       .map(c => ({

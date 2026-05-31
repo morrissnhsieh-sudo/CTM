@@ -13,6 +13,13 @@ import (
 	"go.uber.org/zap"
 )
 
+// edge is a directed dependency edge in the task DAG.
+type edge struct {
+	from, to string
+	depType  DependencyType
+	lagDays  int
+}
+
 // DependencyType represents the relationship between tasks.
 type DependencyType string
 
@@ -78,11 +85,6 @@ func (s *Service) Compute(ctx context.Context, projectID string) (*CriticalPath,
 		taskMap[t.ID] = &CPMTask{Task: t}
 	}
 
-	type edge struct {
-		from, to   string
-		depType    DependencyType
-		lagDays    int
-	}
 	forward := make(map[string][]edge)
 	reverse := make(map[string][]edge)
 
@@ -264,12 +266,6 @@ func (s *Service) Compute(ctx context.Context, projectID string) (*CriticalPath,
 // topoSort uses Kahn's algorithm to produce a topological ordering.
 // Returns error if a cycle is detected.
 func topoSort(tasks map[string]*CPMTask, edges map[string][]edge) ([]string, error) {
-	type edge struct {
-		from, to   string
-		depType    DependencyType
-		lagDays    int
-	}
-
 	inDegree := make(map[string]int, len(tasks))
 	successors := make(map[string][]string)
 

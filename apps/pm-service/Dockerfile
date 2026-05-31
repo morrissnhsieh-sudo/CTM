@@ -1,9 +1,12 @@
-# Multi-stage Go build
-FROM golang:1.22-alpine AS builder
+# Multi-stage Go build (build context = repo root)
+FROM golang:1.23-alpine AS builder
 WORKDIR /app
-COPY go.mod go.sum ./
+# Allow automatic toolchain download for indirect deps that need newer Go
+ENV GOTOOLCHAIN=auto
+RUN apk --no-cache add git
+COPY apps/pm-service/go.mod apps/pm-service/go.sum ./
 RUN go mod download
-COPY . .
+COPY apps/pm-service/ .
 RUN CGO_ENABLED=0 GOOS=linux go build -ldflags="-w -s" -o pm-service ./cmd/pm-service
 
 FROM alpine:3.20 AS production

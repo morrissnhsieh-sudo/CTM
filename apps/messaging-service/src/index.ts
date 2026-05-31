@@ -29,16 +29,29 @@ async function main() {
   const pool = new pg.Pool({ connectionString: env.DB_URL, max: 15 })
 
   const pubClient = new Redis(env.REDIS_URL)
+  pubClient.on('error', (err) => logger.error({ err }, 'Redis pub error'))
   const subClient = pubClient.duplicate()
+  subClient.on('error', (err) => logger.error({ err }, 'Redis sub error'))
 
   const kafka = new Kafka({ clientId: 'messaging-service', brokers: env.KAFKA_BROKERS.split(',') })
   const producer = kafka.producer()
-  await producer.connect()
+  // Retry Kafka connection up to 5 times
+  for (let i = 1; i <= 5; i++) {
+    try {
+      await producer.connect()
+      break
+    } catch (err) {
+      logger.warn({ err, attempt: i }, 'Kafka connect failed, retrying in 5s...')
+      if (i === 5) throw err
+      await new Promise(r => setTimeout(r, 5000))
+    }
+  }
 
   const JWKS = createRemoteJWKSet(new URL(env.KEYCLOAK_JWKS_URI), { cooldownDuration: 300_000 })
 
   // ─── Fastify HTTP server ──────────────────────────────────
-  const app = Fastify({ logger })
+  // Fastify 5: pass logger as pino options object, not a pino instance
+  const app = Fastify({ logger: { level: 'info' } })
 
   const dispatcher = new NotificationDispatcher(pool, pubClient, producer, logger)
 

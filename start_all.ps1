@@ -21,7 +21,8 @@ param(
 )
 
 Set-StrictMode -Version Latest
-$ErrorActionPreference = "Stop"
+# Use Continue so docker stderr warnings don't abort the script
+$ErrorActionPreference = "Continue"
 
 # ---- Colours ----------------------------------------------------------------
 function Write-Header  { param($msg) Write-Host "" ; Write-Host "  $msg" -ForegroundColor Cyan }

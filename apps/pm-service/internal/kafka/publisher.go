@@ -3,8 +3,6 @@ package kafka
 import (
 	"context"
 	"encoding/json"
-	"net"
-	"strconv"
 	"time"
 
 	kafkago "github.com/segmentio/kafka-go"
@@ -85,10 +83,11 @@ func NewConsumer(brokersCSV, group string, log *zap.Logger) *Consumer {
 func (c *Consumer) Close() {}
 
 // ConsumeRows subscribes to ctm.rows and evaluates workflow triggers.
+// triggerSvc and taskRepo are any to avoid circular import issues.
 func (c *Consumer) ConsumeRows(
 	ctx context.Context,
-	triggerSvc interface{ EvaluateForRow(ctx context.Context, sheetID string, event interface{}) error },
-	taskRepo interface{},
+	triggerSvc any,
+	taskRepo any,
 	log *zap.Logger,
 ) {
 	r := kafkago.NewReader(kafkago.ReaderConfig{

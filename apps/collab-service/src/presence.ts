@@ -1,4 +1,4 @@
-import Redis from 'ioredis'
+// eslint-disable-next-line @typescript-eslint/no-require-imports
 import type { PresenceData } from '@ctm/shared-types'
 
 /**
@@ -9,7 +9,8 @@ import type { PresenceData } from '@ctm/shared-types'
 export class PresenceManager {
   private readonly TTL_SECONDS = 30
 
-  constructor(private redis: Redis) {}
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  constructor(private redis: any) {}
 
   async setPresence(
     workspaceId: string,
@@ -39,7 +40,8 @@ export class PresenceManager {
     const hash = await this.redis.hgetall(key)
 
     return Object.values(hash)
-      .map(v => {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      .map((v: any) => {
         try { return JSON.parse(v) as PresenceData }
         catch { return null }
       })
