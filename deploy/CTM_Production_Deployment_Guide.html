@@ -1,0 +1,1200 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>CTM Platform — Production Deployment Guide</title>
+<style>
+  /* ── Reset & Base ─────────────────────────────────────── */
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+  :root {
+    --blue:      #2563eb;
+    --blue-lt:   #eff6ff;
+    --blue-mid:  #bfdbfe;
+    --green:     #16a34a;
+    --green-lt:  #f0fdf4;
+    --green-mid: #bbf7d0;
+    --yellow:    #d97706;
+    --yellow-lt: #fffbeb;
+    --yellow-mid:#fde68a;
+    --red:       #dc2626;
+    --red-lt:    #fef2f2;
+    --red-mid:   #fecaca;
+    --gray-50:   #f9fafb;
+    --gray-100:  #f3f4f6;
+    --gray-200:  #e5e7eb;
+    --gray-300:  #d1d5db;
+    --gray-500:  #6b7280;
+    --gray-700:  #374151;
+    --gray-800:  #1f2937;
+    --gray-900:  #111827;
+    --font-sans: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+    --font-mono: 'JetBrains Mono', 'Fira Code', Consolas, 'Courier New', monospace;
+    --radius:    8px;
+    --shadow:    0 1px 3px rgba(0,0,0,.1), 0 1px 2px rgba(0,0,0,.06);
+    --shadow-md: 0 4px 6px rgba(0,0,0,.07), 0 2px 4px rgba(0,0,0,.06);
+  }
+
+  html { scroll-behavior: smooth; }
+
+  body {
+    font-family: var(--font-sans);
+    font-size: 15px;
+    line-height: 1.7;
+    color: var(--gray-800);
+    background: var(--gray-50);
+  }
+
+  /* ── Layout ──────────────────────────────────────────── */
+  .layout { display: flex; min-height: 100vh; }
+
+  .sidebar {
+    width: 260px;
+    flex-shrink: 0;
+    background: white;
+    border-right: 1px solid var(--gray-200);
+    position: sticky;
+    top: 0;
+    height: 100vh;
+    overflow-y: auto;
+    padding: 24px 0;
+  }
+
+  .sidebar-logo {
+    padding: 0 20px 20px;
+    border-bottom: 1px solid var(--gray-200);
+    margin-bottom: 16px;
+  }
+  .sidebar-logo h1 {
+    font-size: 18px;
+    font-weight: 700;
+    color: var(--gray-900);
+  }
+  .sidebar-logo p {
+    font-size: 12px;
+    color: var(--gray-500);
+    margin-top: 2px;
+  }
+
+  .sidebar nav ul { list-style: none; }
+  .sidebar nav li a {
+    display: block;
+    padding: 6px 20px;
+    font-size: 13px;
+    color: var(--gray-600, #4b5563);
+    text-decoration: none;
+    border-left: 3px solid transparent;
+    transition: all .15s;
+  }
+  .sidebar nav li a:hover { color: var(--blue); background: var(--blue-lt); border-left-color: var(--blue-mid); }
+  .sidebar nav li.section-heading a {
+    font-size: 11px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: .08em;
+    color: var(--gray-400, #9ca3af);
+    pointer-events: none;
+    margin-top: 16px;
+  }
+
+  .content {
+    flex: 1;
+    max-width: 860px;
+    padding: 48px 56px;
+  }
+
+  @media (max-width: 900px) {
+    .sidebar { display: none; }
+    .content { padding: 24px 20px; }
+  }
+
+  /* ── Hero ────────────────────────────────────────────── */
+  .hero {
+    background: linear-gradient(135deg, #1e3a8a 0%, #2563eb 50%, #0ea5e9 100%);
+    border-radius: var(--radius);
+    padding: 40px 40px 36px;
+    color: white;
+    margin-bottom: 40px;
+  }
+  .hero-badge {
+    display: inline-block;
+    background: rgba(255,255,255,.2);
+    border: 1px solid rgba(255,255,255,.3);
+    border-radius: 20px;
+    padding: 3px 12px;
+    font-size: 12px;
+    font-weight: 600;
+    letter-spacing: .04em;
+    margin-bottom: 14px;
+  }
+  .hero h1 { font-size: 32px; font-weight: 800; line-height: 1.2; }
+  .hero p  { margin-top: 10px; opacity: .85; font-size: 16px; max-width: 600px; }
+  .hero-meta {
+    margin-top: 20px;
+    display: flex;
+    gap: 20px;
+    flex-wrap: wrap;
+    font-size: 13px;
+    opacity: .8;
+  }
+  .hero-meta span::before { margin-right: 5px; }
+
+  /* ── Typography ──────────────────────────────────────── */
+  h2 {
+    font-size: 22px;
+    font-weight: 700;
+    color: var(--gray-900);
+    margin: 48px 0 16px;
+    padding-bottom: 10px;
+    border-bottom: 2px solid var(--gray-200);
+    display: flex;
+    align-items: center;
+    gap: 10px;
+  }
+  h2:first-child { margin-top: 0; }
+  h3 {
+    font-size: 16px;
+    font-weight: 700;
+    color: var(--gray-800);
+    margin: 28px 0 10px;
+  }
+  h4 {
+    font-size: 14px;
+    font-weight: 700;
+    color: var(--gray-700);
+    margin: 20px 0 8px;
+  }
+  p { margin-bottom: 14px; }
+  p:last-child { margin-bottom: 0; }
+  strong { font-weight: 600; color: var(--gray-900); }
+  a { color: var(--blue); text-decoration: none; }
+  a:hover { text-decoration: underline; }
+
+  /* ── Step cards ──────────────────────────────────────── */
+  .step {
+    background: white;
+    border: 1px solid var(--gray-200);
+    border-radius: var(--radius);
+    padding: 28px 28px 24px;
+    margin: 20px 0;
+    box-shadow: var(--shadow);
+    position: relative;
+  }
+  .step-header {
+    display: flex;
+    align-items: flex-start;
+    gap: 16px;
+    margin-bottom: 16px;
+  }
+  .step-number {
+    width: 36px;
+    height: 36px;
+    border-radius: 50%;
+    background: var(--blue);
+    color: white;
+    font-size: 15px;
+    font-weight: 700;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+    box-shadow: 0 2px 4px rgba(37,99,235,.3);
+  }
+  .step-title { font-size: 17px; font-weight: 700; color: var(--gray-900); }
+  .step-subtitle { font-size: 13px; color: var(--gray-500); margin-top: 2px; }
+  .step-content { padding-left: 52px; }
+
+  /* ── Code blocks ─────────────────────────────────────── */
+  pre {
+    background: var(--gray-900);
+    color: #e2e8f0;
+    border-radius: var(--radius);
+    padding: 16px 20px;
+    overflow-x: auto;
+    font-family: var(--font-mono);
+    font-size: 13px;
+    line-height: 1.6;
+    margin: 12px 0;
+    position: relative;
+  }
+  pre .comment   { color: #94a3b8; }
+  pre .keyword   { color: #93c5fd; }
+  pre .string    { color: #86efac; }
+  pre .value     { color: #fde68a; }
+  pre .command   { color: #c4b5fd; }
+  code {
+    font-family: var(--font-mono);
+    font-size: 12.5px;
+    background: var(--gray-100);
+    border: 1px solid var(--gray-200);
+    border-radius: 4px;
+    padding: 1px 6px;
+    color: var(--red);
+  }
+  pre code {
+    background: none;
+    border: none;
+    padding: 0;
+    color: inherit;
+    font-size: inherit;
+  }
+
+  .code-label {
+    background: var(--gray-700);
+    color: var(--gray-300);
+    font-family: var(--font-mono);
+    font-size: 11px;
+    padding: 4px 12px;
+    border-radius: var(--radius) var(--radius) 0 0;
+    margin-bottom: -4px;
+    display: inline-block;
+  }
+
+  /* ── Callouts ────────────────────────────────────────── */
+  .callout {
+    border-radius: var(--radius);
+    padding: 14px 16px;
+    margin: 16px 0;
+    display: flex;
+    gap: 12px;
+    font-size: 14px;
+    border: 1px solid;
+  }
+  .callout-icon { font-size: 18px; flex-shrink: 0; line-height: 1.4; }
+  .callout-body strong { display: block; margin-bottom: 3px; }
+
+  .callout.info    { background: var(--blue-lt);   border-color: var(--blue-mid);   color: #1e40af; }
+  .callout.success { background: var(--green-lt);  border-color: var(--green-mid);  color: #14532d; }
+  .callout.warning { background: var(--yellow-lt); border-color: var(--yellow-mid); color: #78350f; }
+  .callout.danger  { background: var(--red-lt);    border-color: var(--red-mid);    color: #7f1d1d; }
+
+  /* ── Tables ──────────────────────────────────────────── */
+  .table-wrap { overflow-x: auto; margin: 16px 0; border-radius: var(--radius); border: 1px solid var(--gray-200); }
+  table { width: 100%; border-collapse: collapse; font-size: 14px; }
+  thead th {
+    background: var(--gray-100);
+    padding: 10px 14px;
+    text-align: left;
+    font-weight: 700;
+    font-size: 12px;
+    text-transform: uppercase;
+    letter-spacing: .05em;
+    color: var(--gray-600, #4b5563);
+    border-bottom: 1px solid var(--gray-200);
+  }
+  tbody td { padding: 10px 14px; border-bottom: 1px solid var(--gray-100); vertical-align: top; }
+  tbody tr:last-child td { border-bottom: none; }
+  tbody tr:hover td { background: var(--gray-50); }
+  td code { font-size: 12px; }
+
+  /* ── Badges ──────────────────────────────────────────── */
+  .badge {
+    display: inline-block;
+    padding: 2px 8px;
+    border-radius: 20px;
+    font-size: 11px;
+    font-weight: 700;
+    letter-spacing: .03em;
+  }
+  .badge-blue   { background: var(--blue-lt);   color: var(--blue);   border: 1px solid var(--blue-mid); }
+  .badge-green  { background: var(--green-lt);  color: var(--green);  border: 1px solid var(--green-mid); }
+  .badge-yellow { background: var(--yellow-lt); color: var(--yellow); border: 1px solid var(--yellow-mid); }
+  .badge-gray   { background: var(--gray-100);  color: var(--gray-500); border: 1px solid var(--gray-200); }
+
+  /* ── Checklist ───────────────────────────────────────── */
+  .checklist { list-style: none; margin: 12px 0; }
+  .checklist li {
+    padding: 6px 0 6px 28px;
+    position: relative;
+    font-size: 14px;
+    border-bottom: 1px solid var(--gray-100);
+  }
+  .checklist li:last-child { border-bottom: none; }
+  .checklist li::before {
+    content: '☐';
+    position: absolute;
+    left: 0;
+    color: var(--gray-400, #9ca3af);
+    font-size: 16px;
+  }
+
+  /* ── Service grid ────────────────────────────────────── */
+  .service-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+    gap: 12px;
+    margin: 16px 0;
+  }
+  .service-card {
+    background: white;
+    border: 1px solid var(--gray-200);
+    border-radius: var(--radius);
+    padding: 14px;
+    box-shadow: var(--shadow);
+  }
+  .service-card .svc-tag {
+    font-size: 10px;
+    font-weight: 700;
+    letter-spacing: .06em;
+    text-transform: uppercase;
+    color: var(--blue);
+    margin-bottom: 4px;
+  }
+  .service-card .svc-name { font-weight: 700; font-size: 14px; color: var(--gray-900); }
+  .service-card .svc-url  { font-size: 12px; color: var(--gray-500); font-family: var(--font-mono); margin-top: 4px; }
+
+  /* ── Architecture diagram ────────────────────────────── */
+  .arch-diagram {
+    background: var(--gray-900);
+    color: #e2e8f0;
+    border-radius: var(--radius);
+    padding: 20px 24px;
+    font-family: var(--font-mono);
+    font-size: 13px;
+    line-height: 1.8;
+    margin: 16px 0;
+    overflow-x: auto;
+  }
+  .arch-diagram .hl  { color: #93c5fd; }
+  .arch-diagram .hl2 { color: #86efac; }
+  .arch-diagram .hl3 { color: #fde68a; }
+  .arch-diagram .dim { color: #64748b; }
+
+  /* ── Divider ─────────────────────────────────────────── */
+  hr { border: none; border-top: 1px solid var(--gray-200); margin: 36px 0; }
+
+  /* ── Footer ──────────────────────────────────────────── */
+  footer {
+    text-align: center;
+    padding: 32px 0 48px;
+    color: var(--gray-400, #9ca3af);
+    font-size: 13px;
+    border-top: 1px solid var(--gray-200);
+    margin-top: 48px;
+  }
+
+  /* ── Print ───────────────────────────────────────────── */
+  @media print {
+    .sidebar, .callout-icon { display: none; }
+    .content { padding: 0; max-width: 100%; }
+    pre { white-space: pre-wrap; word-break: break-all; }
+    .step { box-shadow: none; border: 1px solid #ccc; }
+  }
+</style>
+</head>
+<body>
+
+<div class="layout">
+
+<!-- ─── Sidebar ──────────────────────────────────────────────────────────── -->
+<aside class="sidebar">
+  <div class="sidebar-logo">
+    <h1>CTM Platform</h1>
+    <p>Production Deployment Guide</p>
+  </div>
+  <nav>
+    <ul>
+      <li class="section-heading"><a href="#">Overview</a></li>
+      <li><a href="#overview">What You Need</a></li>
+      <li><a href="#architecture">Production Architecture</a></li>
+      <li><a href="#dev-vs-prod">Dev vs Production</a></li>
+
+      <li class="section-heading"><a href="#">Deployment</a></li>
+      <li><a href="#step1">Step 1 — Provision Server</a></li>
+      <li><a href="#step2">Step 2 — Configure DNS</a></li>
+      <li><a href="#step3">Step 3 — Set Up Server</a></li>
+      <li><a href="#step4">Step 4 — Clone Repository</a></li>
+      <li><a href="#step5">Step 5 — Generate Secrets</a></li>
+      <li><a href="#step6">Step 6 — Configure .env.prod</a></li>
+      <li><a href="#step7">Step 7 — Obtain SSL Certs</a></li>
+      <li><a href="#step8">Step 8 — Deploy</a></li>
+      <li><a href="#step9">Step 9 — Verify</a></li>
+
+      <li class="section-heading"><a href="#">Operations</a></li>
+      <li><a href="#updates">Updating CTM</a></li>
+      <li><a href="#backups">Backups</a></li>
+      <li><a href="#monitoring">Monitoring</a></li>
+      <li><a href="#scaling">Scaling</a></li>
+      <li><a href="#troubleshooting">Troubleshooting</a></li>
+    </ul>
+  </nav>
+</aside>
+
+<!-- ─── Main Content ─────────────────────────────────────────────────────── -->
+<main class="content">
+
+  <!-- Hero -->
+  <div class="hero">
+    <div class="hero-badge">DEPLOYMENT GUIDE</div>
+    <h1>Deploying CTM to Production</h1>
+    <p>Step-by-step instructions to deploy the full CTM Collaborative AI Spreadsheet Platform on a Linux server with Docker, Nginx, and Let's Encrypt SSL.</p>
+    <div class="hero-meta">
+      <span>⏱ Estimated time: 30–60 minutes</span>
+      <span>🐧 Ubuntu 22.04 / Debian 12</span>
+      <span>🐳 Docker Compose</span>
+      <span>📅 May 2026</span>
+    </div>
+  </div>
+
+  <!-- ── Overview ──────────────────────────────────────────────────────── -->
+  <h2 id="overview">📋 What You Need Before Starting</h2>
+
+  <div class="table-wrap">
+    <table>
+      <thead>
+        <tr><th>Requirement</th><th>Minimum</th><th>Recommended</th><th>Notes</th></tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td><strong>Server OS</strong></td>
+          <td>Ubuntu 22.04 or Debian 12</td>
+          <td>Ubuntu 22.04 LTS</td>
+          <td>Any VPS or cloud VM (AWS, GCP, Azure, Hetzner, DigitalOcean)</td>
+        </tr>
+        <tr>
+          <td><strong>CPU</strong></td>
+          <td>2 vCPU</td>
+          <td>8 vCPU</td>
+          <td>Kafka + Keycloak + AI service are CPU-intensive</td>
+        </tr>
+        <tr>
+          <td><strong>RAM</strong></td>
+          <td>8 GB</td>
+          <td>32 GB</td>
+          <td>Keycloak needs ~1 GB, ai-service needs ~2–4 GB</td>
+        </tr>
+        <tr>
+          <td><strong>Disk</strong></td>
+          <td>40 GB SSD</td>
+          <td>200 GB SSD</td>
+          <td>For Docker images, PostgreSQL data, and file uploads</td>
+        </tr>
+        <tr>
+          <td><strong>Domain</strong></td>
+          <td colspan="2">Any registered domain with DNS control</td>
+          <td>e.g. <code>ctm.example.com</code></td>
+        </tr>
+        <tr>
+          <td><strong>Ports open</strong></td>
+          <td colspan="2">22 (SSH), 80 (HTTP), 443 (HTTPS)</td>
+          <td>All other ports stay internal — only Nginx is public</td>
+        </tr>
+        <tr>
+          <td><strong>Vertex AI key</strong></td>
+          <td colspan="2">Service account JSON from Google Cloud</td>
+          <td>Already at <code>VertexKeys/d-sxd110x-ssd1-aaos-34f80b5f4448.json</code></td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+
+  <div class="callout info">
+    <div class="callout-icon">💡</div>
+    <div class="callout-body">
+      <strong>Cloud provider recommendations</strong>
+      Hetzner CCX33 (8 vCPU, 32 GB, ~€40/mo) offers the best value. AWS t3.2xlarge or GCP n2-standard-8 also work well. For testing, a 4 GB RAM VPS is sufficient but expect slower AI responses.
+    </div>
+  </div>
+
+  <!-- ── Architecture ──────────────────────────────────────────────────── -->
+  <h2 id="architecture">🏗️ Production Architecture</h2>
+  <p>In production, all traffic enters through Nginx, which handles SSL termination and routes to the appropriate service. All services run in a private Docker network and are never directly exposed to the internet.</p>
+
+  <div class="arch-diagram">
+<span class="dim">Internet</span>
+    │  HTTP :80  ──→ redirect to HTTPS
+    │  HTTPS :443
+    ▼
+<span class="hl">┌─ Nginx (SSL termination) ─────────────────────────────────────────────┐</span>
+<span class="hl">│</span>  app.domain     ──→ <span class="hl2">frontend:3000</span>        (Next.js UI)
+<span class="hl">│</span>  api.domain     ──→ <span class="hl2">api-service:3001</span>     (REST API + MCP)
+<span class="hl">│</span>  auth.domain    ──→ <span class="hl2">keycloak:8080</span>        (OAuth 2.0 / OIDC)
+<span class="hl">│</span>  collab.domain  ──→ <span class="hl2">collab-service:1234</span>  (WebSocket CRDT)
+<span class="hl">│</span>  chat.domain    ──→ <span class="hl2">messaging-service:3002</span> (Socket.io)
+<span class="hl">└───────────────────────────────────────────────────────────────────────┘</span>
+    │ (internal ctm-net Docker network — no external access)
+    ▼
+<span class="hl3">Application Services</span>          <span class="dim">Infrastructure</span>
+  api-service    (Node.js)      postgres:5432  (PostgreSQL 16 + pgvector)
+  collab-service (Node.js)      redis:6379     (Redis 7.2 cache + pub/sub)
+  pm-service     (Go)           kafka:9092     (Kafka 3.7 event bus)
+  ai-service     (Python)       minio:9000     (S3-compatible storage)
+  messaging-svc  (Node.js)      keycloak:8080  (Auth / SSO)
+  frontend       (Next.js)
+  </div>
+
+  <!-- ── Dev vs Prod ────────────────────────────────────────────────────── -->
+  <h2 id="dev-vs-prod">🔄 Development vs Production</h2>
+  <p>The production compose file (<code>deploy/docker-compose.prod.yml</code>) differs from the development one in several important ways:</p>
+
+  <div class="table-wrap">
+    <table>
+      <thead>
+        <tr><th>Area</th><th>Development</th><th>Production</th></tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td><strong>Passwords</strong></td>
+          <td><code>ctm_dev_pass</code> (hardcoded)</td>
+          <td>Docker Secrets from <code>/etc/ctm/secrets/</code></td>
+        </tr>
+        <tr>
+          <td><strong>Keycloak mode</strong></td>
+          <td><code>start-dev</code> (no TLS required)</td>
+          <td><code>start</code> (production, proxy=edge)</td>
+        </tr>
+        <tr>
+          <td><strong>SSL / TLS</strong></td>
+          <td>None</td>
+          <td>Let's Encrypt via Certbot + Nginx</td>
+        </tr>
+        <tr>
+          <td><strong>Nginx</strong></td>
+          <td>Not included</td>
+          <td>Rate limiting, security headers, WebSocket upgrade</td>
+        </tr>
+        <tr>
+          <td><strong>Restart policy</strong></td>
+          <td>None (manual restart)</td>
+          <td><code>restart: always</code> on all services</td>
+        </tr>
+        <tr>
+          <td><strong>External ports</strong></td>
+          <td>All services exposed (3001, 5432, 6379…)</td>
+          <td>Only 80 + 443 via Nginx</td>
+        </tr>
+        <tr>
+          <td><strong>PostgreSQL buffers</strong></td>
+          <td>256 MB <code>shared_buffers</code></td>
+          <td>8 GB <code>shared_buffers</code> (32 GB server)</td>
+        </tr>
+        <tr>
+          <td><strong>AI service workers</strong></td>
+          <td>1 uvicorn worker</td>
+          <td>4 uvicorn workers</td>
+        </tr>
+        <tr>
+          <td><strong>Certificate renewal</strong></td>
+          <td>—</td>
+          <td>Certbot container auto-renews every 12 hours</td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+
+  <hr />
+
+  <!-- ╔══════════════════════════════════════════════════════════╗ -->
+  <!-- ║               DEPLOYMENT STEPS                          ║ -->
+  <!-- ╚══════════════════════════════════════════════════════════╝ -->
+
+  <h2>🚀 Deployment Steps</h2>
+
+  <!-- ── Step 1 ─────────────────────────────────────────────────────────── -->
+  <div class="step" id="step1">
+    <div class="step-header">
+      <div class="step-number">1</div>
+      <div>
+        <div class="step-title">Provision a Server</div>
+        <div class="step-subtitle">Create a Linux VM with the right specs</div>
+      </div>
+    </div>
+    <div class="step-content">
+      <p>Create a new server with any cloud provider. Ubuntu 22.04 LTS is recommended.</p>
+
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>Provider</th><th>Recommended Plan</th><th>Approx. Cost</th></tr></thead>
+          <tbody>
+            <tr><td>🟠 Hetzner</td><td>CCX33 (8 vCPU, 32 GB)</td><td>~€40/month</td></tr>
+            <tr><td>🔵 DigitalOcean</td><td>General Purpose 8 vCPU 32 GB</td><td>~$160/month</td></tr>
+            <tr><td>🟡 AWS</td><td>t3.2xlarge (8 vCPU, 32 GB)</td><td>~$270/month</td></tr>
+            <tr><td>🔴 GCP</td><td>n2-standard-8 (8 vCPU, 32 GB)</td><td>~$310/month</td></tr>
+            <tr><td>🟣 Vultr</td><td>Cloud Compute 8 vCPU 32 GB</td><td>~$160/month</td></tr>
+          </tbody>
+        </table>
+      </div>
+
+      <div class="callout warning">
+        <div class="callout-icon">⚠️</div>
+        <div class="callout-body">
+          <strong>Minimum for testing: 4 GB RAM</strong>
+          You can run CTM on 4 GB RAM but Kafka and Keycloak may be slow. For team use or production load, 16–32 GB is strongly recommended.
+        </div>
+      </div>
+
+      <p>After your server is created, note its public IP address and SSH in:</p>
+      <div class="code-label">terminal</div>
+      <pre>ssh root@<span class="value">YOUR_SERVER_IP</span></pre>
+    </div>
+  </div>
+
+  <!-- ── Step 2 ─────────────────────────────────────────────────────────── -->
+  <div class="step" id="step2">
+    <div class="step-header">
+      <div class="step-number">2</div>
+      <div>
+        <div class="step-title">Configure DNS</div>
+        <div class="step-subtitle">Point your domain and subdomains at the server</div>
+      </div>
+    </div>
+    <div class="step-content">
+      <p>In your domain registrar's DNS panel, add these <strong>A records</strong> pointing to your server's IP address:</p>
+
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>Record Type</th><th>Name</th><th>Value</th><th>Purpose</th></tr></thead>
+          <tbody>
+            <tr><td><span class="badge badge-blue">A</span></td><td><code>ctm.example.com</code></td><td><code>YOUR_IP</code></td><td>Root domain</td></tr>
+            <tr><td><span class="badge badge-blue">A</span></td><td><code>app.ctm.example.com</code></td><td><code>YOUR_IP</code></td><td>Frontend UI</td></tr>
+            <tr><td><span class="badge badge-blue">A</span></td><td><code>api.ctm.example.com</code></td><td><code>YOUR_IP</code></td><td>REST API</td></tr>
+            <tr><td><span class="badge badge-blue">A</span></td><td><code>auth.ctm.example.com</code></td><td><code>YOUR_IP</code></td><td>Keycloak SSO</td></tr>
+            <tr><td><span class="badge badge-blue">A</span></td><td><code>collab.ctm.example.com</code></td><td><code>YOUR_IP</code></td><td>WebSocket CRDT</td></tr>
+            <tr><td><span class="badge badge-blue">A</span></td><td><code>chat.ctm.example.com</code></td><td><code>YOUR_IP</code></td><td>Socket.io chat</td></tr>
+          </tbody>
+        </table>
+      </div>
+
+      <div class="callout info">
+        <div class="callout-icon">💡</div>
+        <div class="callout-body">
+          <strong>DNS propagation takes up to 48 hours</strong>
+          You can proceed with the remaining steps while DNS propagates. Verify propagation with: <code>dig app.ctm.example.com</code> or <a href="https://dnschecker.org" target="_blank">dnschecker.org</a>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ── Step 3 ─────────────────────────────────────────────────────────── -->
+  <div class="step" id="step3">
+    <div class="step-header">
+      <div class="step-number">3</div>
+      <div>
+        <div class="step-title">Set Up the Server</div>
+        <div class="step-subtitle">Install Docker, configure firewall, tune kernel</div>
+      </div>
+    </div>
+    <div class="step-content">
+      <p>Run the automated setup script as root on your server. This installs Docker, configures UFW (only ports 22, 80, 443 open), and tunes kernel parameters for production workloads.</p>
+
+      <div class="code-label">server — bash</div>
+      <pre><span class="comment"># On your server (SSH'd in as root):</span>
+curl -fsSL https://raw.githubusercontent.com/morrissnhsieh-sudo/CTM/main/deploy/scripts/setup-server.sh | bash</pre>
+
+      <p>Or if you've already cloned the repo:</p>
+      <div class="code-label">server — bash</div>
+      <pre>bash deploy/scripts/setup-server.sh</pre>
+
+      <p>The script performs these actions:</p>
+      <ul class="checklist">
+        <li>Updates system packages (<code>apt-get upgrade</code>)</li>
+        <li>Installs Docker Engine (latest stable) and enables it as a service</li>
+        <li>Configures UFW firewall: allow SSH (22), HTTP (80), HTTPS (443); deny everything else</li>
+        <li>Installs Certbot for SSL certificate management</li>
+        <li>Creates <code>/etc/ctm/secrets/</code> with mode 700</li>
+        <li>Tunes kernel: <code>net.core.somaxconn=65535</code>, <code>fs.file-max=1000000</code></li>
+        <li>Increases open file limits for high-concurrency workloads</li>
+      </ul>
+
+      <div class="callout warning">
+        <div class="callout-icon">⚠️</div>
+        <div class="callout-body">
+          <strong>Log out and back in after setup</strong>
+          The script adds your user to the <code>docker</code> group. This change only takes effect after a new SSH session. Run <code>exit</code> and SSH back in before proceeding.
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ── Step 4 ─────────────────────────────────────────────────────────── -->
+  <div class="step" id="step4">
+    <div class="step-header">
+      <div class="step-number">4</div>
+      <div>
+        <div class="step-title">Clone the Repository</div>
+        <div class="step-subtitle">Get the CTM source code on the server</div>
+      </div>
+    </div>
+    <div class="step-content">
+      <div class="code-label">server — bash</div>
+      <pre><span class="comment"># Clone the repository</span>
+git clone https://github.com/morrissnhsieh-sudo/CTM.git
+cd CTM</pre>
+
+      <p>The <code>deploy/</code> directory contains all production configuration files:</p>
+      <div class="code-label">directory structure</div>
+      <pre>deploy/
+├── docker-compose.prod.yml   <span class="comment"># Production Compose file</span>
+├── nginx/
+│   ├── nginx.conf            <span class="comment"># Nginx main config</span>
+│   └── conf.d/ctm.conf       <span class="comment"># Virtual host config (SSL, routing)</span>
+└── scripts/
+    ├── setup-server.sh       <span class="comment"># Server setup (Step 3)</span>
+    ├── setup-secrets.sh      <span class="comment"># Generate secrets (Step 5)</span>
+    ├── get-ssl-cert.sh       <span class="comment"># Obtain SSL certs (Step 7)</span>
+    └── deploy.sh             <span class="comment"># Full deployment (Step 8)</span></pre>
+    </div>
+  </div>
+
+  <!-- ── Step 5 ─────────────────────────────────────────────────────────── -->
+  <div class="step" id="step5">
+    <div class="step-header">
+      <div class="step-number">5</div>
+      <div>
+        <div class="step-title">Generate Secrets</div>
+        <div class="step-subtitle">Create cryptographically secure passwords for all services</div>
+      </div>
+    </div>
+    <div class="step-content">
+      <p>The production deployment uses <strong>Docker Secrets</strong> — passwords are stored as files on the host filesystem, never as plaintext environment variables. The script generates strong random passwords for all services.</p>
+
+      <div class="code-label">server — bash</div>
+      <pre>sudo bash deploy/scripts/setup-secrets.sh</pre>
+
+      <p>This creates the following files in <code>/etc/ctm/secrets/</code> with mode 600 (owner-only read):</p>
+
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>File</th><th>Used by</th><th>Contents</th></tr></thead>
+          <tbody>
+            <tr><td><code>pg_password.txt</code></td><td>PostgreSQL, Keycloak</td><td>32-char random password</td></tr>
+            <tr><td><code>redis_password.txt</code></td><td>Redis</td><td>32-char random password</td></tr>
+            <tr><td><code>minio_password.txt</code></td><td>MinIO S3</td><td>32-char random password</td></tr>
+            <tr><td><code>keycloak_admin_password.txt</code></td><td>Keycloak admin console</td><td>32-char random password</td></tr>
+            <tr><td><code>vertex_key.json</code></td><td>M6 AI Service</td><td>Google Cloud service account JSON</td></tr>
+          </tbody>
+        </table>
+      </div>
+
+      <p>Next, copy the Vertex AI key from your local machine to the server:</p>
+      <div class="code-label">your local machine — PowerShell</div>
+      <pre><span class="comment"># Run this on YOUR local machine, not the server</span>
+scp <span class="string">"C:\Users\User\Code\VertexKeys\d-sxd110x-ssd1-aaos-34f80b5f4448.json"</span> `
+    root@<span class="value">YOUR_SERVER_IP</span>:/etc/ctm/secrets/vertex_key.json</pre>
+
+      <div class="callout danger">
+        <div class="callout-icon">🔐</div>
+        <div class="callout-body">
+          <strong>Save the generated passwords immediately</strong>
+          The script displays the Keycloak admin and PostgreSQL passwords once. Copy them to a secure password manager (1Password, Bitwarden, etc.) before closing the terminal. They cannot be recovered without resetting, which requires restarting affected services.
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ── Step 6 ─────────────────────────────────────────────────────────── -->
+  <div class="step" id="step6">
+    <div class="step-header">
+      <div class="step-number">6</div>
+      <div>
+        <div class="step-title">Configure Production Environment</div>
+        <div class="step-subtitle">Create <code>.env.prod</code> with your domain and API keys</div>
+      </div>
+    </div>
+    <div class="step-content">
+      <div class="code-label">server — bash</div>
+      <pre>cp .env.prod.example .env.prod
+nano .env.prod</pre>
+
+      <p>The minimum required changes are:</p>
+
+      <div class="code-label">.env.prod</div>
+      <pre><span class="comment"># Replace with your actual domain</span>
+<span class="keyword">DOMAIN</span>=<span class="value">ctm.example.com</span>
+
+<span class="comment"># Generate two random secrets:</span>
+<span class="comment">#   openssl rand -base64 32</span>
+<span class="keyword">INTERNAL_TOKEN_SECRET</span>=<span class="value">paste-32-char-random-string-here</span>
+<span class="keyword">NEXTAUTH_SECRET</span>=<span class="value">paste-another-32-char-random-string-here</span>
+
+<span class="comment"># Vertex AI project (already configured)</span>
+<span class="keyword">VERTEX_PROJECT_ID</span>=<span class="value">d-sxd110x-ssd1-aaos</span>
+<span class="keyword">VERTEX_REGION</span>=<span class="value">us-east5</span>
+
+<span class="comment"># Optional: email notifications</span>
+<span class="keyword">RESEND_API_KEY</span>=<span class="value">re_your_resend_key</span></pre>
+
+      <p>Generate the two random secrets with this command:</p>
+      <div class="code-label">server — bash</div>
+      <pre>openssl rand -base64 32</pre>
+
+      <div class="callout info">
+        <div class="callout-icon">💡</div>
+        <div class="callout-body">
+          <strong>Database passwords come from secrets files, not .env.prod</strong>
+          You do not need to set <code>PG_PASSWORD</code> or <code>REDIS_PASSWORD</code> in <code>.env.prod</code> — they are read automatically from <code>/etc/ctm/secrets/*.txt</code> by Docker Secrets.
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ── Step 7 ─────────────────────────────────────────────────────────── -->
+  <div class="step" id="step7">
+    <div class="step-header">
+      <div class="step-number">7</div>
+      <div>
+        <div class="step-title">Obtain SSL Certificates</div>
+        <div class="step-subtitle">Free Let's Encrypt certificates via Certbot</div>
+      </div>
+    </div>
+    <div class="step-content">
+      <p>First, start Nginx on port 80 so Certbot can complete the ACME HTTP-01 challenge:</p>
+
+      <div class="code-label">server — bash</div>
+      <pre><span class="comment"># Start Nginx (HTTP only — SSL not configured yet)</span>
+docker compose -f deploy/docker-compose.prod.yml up -d nginx</pre>
+
+      <p>Then obtain certificates for all subdomains:</p>
+
+      <div class="code-label">server — bash</div>
+      <pre>bash deploy/scripts/get-ssl-cert.sh <span class="value">ctm.example.com</span> <span class="value">admin@example.com</span></pre>
+
+      <p>This requests a wildcard-style certificate covering:</p>
+      <ul style="margin-left:20px; margin-top:8px; font-size:14px;">
+        <li><code>ctm.example.com</code></li>
+        <li><code>app.ctm.example.com</code></li>
+        <li><code>api.ctm.example.com</code></li>
+        <li><code>auth.ctm.example.com</code></li>
+        <li><code>collab.ctm.example.com</code></li>
+        <li><code>chat.ctm.example.com</code></li>
+      </ul>
+
+      <p style="margin-top:14px;">The script also adds a daily cron job for automatic renewal:</p>
+      <div class="code-label">cron (auto-added)</div>
+      <pre>0 12 * * * certbot renew --quiet</pre>
+
+      <div class="callout warning">
+        <div class="callout-icon">⚠️</div>
+        <div class="callout-body">
+          <strong>DNS must be propagated before this step</strong>
+          Certbot contacts Let's Encrypt servers which resolve your domain to verify ownership. If DNS hasn't propagated yet, the certificate request will fail. Wait for <code>dig app.ctm.example.com</code> to return your server's IP.
+        </div>
+      </div>
+
+      <p>After getting certificates, update the Nginx config with your actual domain:</p>
+      <div class="code-label">server — bash</div>
+      <pre>sed -i <span class="string">'s/ctm\.example\.com/ctm.yourdomain.com/g'</span> deploy/nginx/conf.d/ctm.conf</pre>
+    </div>
+  </div>
+
+  <!-- ── Step 8 ─────────────────────────────────────────────────────────── -->
+  <div class="step" id="step8">
+    <div class="step-header">
+      <div class="step-number">8</div>
+      <div>
+        <div class="step-title">Deploy CTM</div>
+        <div class="step-subtitle">Build all images and start all 12 services</div>
+      </div>
+    </div>
+    <div class="step-content">
+      <div class="code-label">server — bash</div>
+      <pre>bash deploy/scripts/deploy.sh</pre>
+
+      <p>The deployment script does the following, automatically:</p>
+
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>Stage</th><th>What happens</th><th>Duration</th></tr></thead>
+          <tbody>
+            <tr><td>1. Pre-flight</td><td>Checks Docker, secrets, .env.prod</td><td>~5 sec</td></tr>
+            <tr><td>2. Images</td><td>Builds all 6 service images from source</td><td>5–15 min (first time)</td></tr>
+            <tr><td>3. Infrastructure</td><td>Starts PostgreSQL, Redis, Kafka, MinIO; waits for health</td><td>1–2 min</td></tr>
+            <tr><td>4. Keycloak</td><td>Starts auth server; waits for /health/ready</td><td>60–90 sec</td></tr>
+            <tr><td>5. App services</td><td>Starts M2–M7 microservices</td><td>~30 sec</td></tr>
+            <tr><td>6. Frontend</td><td>Starts Next.js production server</td><td>~20 sec</td></tr>
+            <tr><td>7. Certbot</td><td>Starts auto-renewal daemon</td><td>~5 sec</td></tr>
+          </tbody>
+        </table>
+      </div>
+
+      <p>To force a full rebuild of all images (e.g. after a code update):</p>
+      <div class="code-label">server — bash</div>
+      <pre>bash deploy/scripts/deploy.sh --rebuild</pre>
+    </div>
+  </div>
+
+  <!-- ── Step 9 ─────────────────────────────────────────────────────────── -->
+  <div class="step" id="step9">
+    <div class="step-header">
+      <div class="step-number">9</div>
+      <div>
+        <div class="step-title">Verify the Deployment</div>
+        <div class="step-subtitle">Confirm all services are healthy and accessible</div>
+      </div>
+    </div>
+    <div class="step-content">
+      <h4>Check container status</h4>
+      <div class="code-label">server — bash</div>
+      <pre>docker compose -f deploy/docker-compose.prod.yml ps</pre>
+
+      <p>All containers should show <code>Up</code> or <code>Up (healthy)</code>. Expected output:</p>
+      <div class="code-label">expected output</div>
+      <pre>NAME               STATUS
+ctm-nginx          Up (healthy)
+ctm-postgres       Up (healthy)
+ctm-redis          Up (healthy)
+ctm-kafka          Up (healthy)
+ctm-minio          Up (healthy)
+ctm-keycloak       Up (healthy)
+ctm-collab         Up
+ctm-api            Up (healthy)
+ctm-pm             Up
+ctm-ai             Up (healthy)
+ctm-messaging      Up
+ctm-frontend       Up (healthy)</pre>
+
+      <h4>Verify HTTP endpoints</h4>
+      <div class="code-label">server — bash</div>
+      <pre><span class="comment"># API health check</span>
+curl -s https://api.ctm.example.com/health
+<span class="comment"># Expected: {"status":"ok","service":"api-service"}</span>
+
+<span class="comment"># Keycloak health</span>
+curl -s https://auth.ctm.example.com/health/ready
+<span class="comment"># Expected: {"status":"UP"}</span>
+
+<span class="comment"># Frontend (check for HTTP 200)</span>
+curl -sI https://app.ctm.example.com | head -1
+<span class="comment"># Expected: HTTP/2 200</span></pre>
+
+      <h4>Access points after deployment</h4>
+
+      <div class="service-grid">
+        <div class="service-card">
+          <div class="svc-tag">M1 Frontend</div>
+          <div class="svc-name">Web App</div>
+          <div class="svc-url">https://app.ctm.example.com</div>
+        </div>
+        <div class="service-card">
+          <div class="svc-tag">M3 API</div>
+          <div class="svc-name">Swagger Docs</div>
+          <div class="svc-url">https://api.ctm.example.com/v1/docs</div>
+        </div>
+        <div class="service-card">
+          <div class="svc-tag">M10 Auth</div>
+          <div class="svc-name">Keycloak Admin</div>
+          <div class="svc-url">https://auth.ctm.example.com/admin</div>
+        </div>
+        <div class="service-card">
+          <div class="svc-tag">M6 AI</div>
+          <div class="svc-name">FastAPI Docs</div>
+          <div class="svc-url">https://api.ctm.example.com/ai/docs</div>
+        </div>
+      </div>
+
+      <h4>First login</h4>
+      <p>The default user accounts from the Keycloak realm export are <strong>not</strong> suitable for production. Create a proper admin account:</p>
+      <ol style="margin-left:20px; margin-top:8px; font-size:14px; line-height:2;">
+        <li>Open <code>https://auth.ctm.example.com/admin</code></li>
+        <li>Log in with Keycloak admin credentials (from <code>/etc/ctm/secrets/keycloak_admin_password.txt</code>)</li>
+        <li>Navigate to <strong>CTM realm → Users → Add user</strong></li>
+        <li>Create your production admin user, set a strong password, assign <code>OWNER</code> role</li>
+        <li>Delete the demo accounts: <code>demo@ctm.app</code> and <code>admin@ctm.app</code></li>
+      </ol>
+    </div>
+  </div>
+
+  <hr />
+
+  <!-- ── Operations ─────────────────────────────────────────────────────── -->
+  <h2 id="updates">🔄 Updating CTM</h2>
+
+  <p>To deploy a new version after code changes:</p>
+  <div class="code-label">server — bash</div>
+  <pre><span class="comment"># Pull latest code</span>
+git pull origin main
+
+<span class="comment"># Rebuild and redeploy</span>
+bash deploy/scripts/deploy.sh --rebuild</pre>
+
+  <p>The deployment is nearly zero-downtime: Compose starts new containers before stopping old ones when <code>restart: always</code> is set. The typical update takes 5–10 minutes.</p>
+
+  <div class="callout info">
+    <div class="callout-icon">💡</div>
+    <div class="callout-body">
+      <strong>Database migrations run automatically</strong>
+      SQL migration files in <code>infra/postgres/migrations/</code> are applied via the <code>docker-entrypoint-initdb.d</code> volume mount. New migrations are applied on the next container start. Existing data is never dropped.
+    </div>
+  </div>
+
+  <!-- ── Backups ────────────────────────────────────────────────────────── -->
+  <h2 id="backups">💾 Backups</h2>
+
+  <h3>PostgreSQL backup (daily)</h3>
+  <p>Add this cron job on the server to create daily database dumps:</p>
+
+  <div class="code-label">server — bash (add to crontab: crontab -e)</div>
+  <pre><span class="comment"># Daily PostgreSQL backup at 2:00 AM</span>
+0 2 * * * docker exec ctm-postgres pg_dump -U ctm ctm | gzip > /backups/ctm-$(date +\%Y\%m\%d).sql.gz
+
+<span class="comment"># Keep only last 30 days</span>
+0 3 * * * find /backups -name "ctm-*.sql.gz" -mtime +30 -delete</pre>
+
+  <p>Create the backup directory first:</p>
+  <div class="code-label">server — bash</div>
+  <pre>mkdir -p /backups && chmod 700 /backups</pre>
+
+  <h3>Restore from backup</h3>
+  <div class="code-label">server — bash</div>
+  <pre><span class="comment"># Stop the application services (keep postgres running)</span>
+docker compose -f deploy/docker-compose.prod.yml stop api-service collab-service
+
+<span class="comment"># Restore</span>
+gunzip -c /backups/ctm-20260101.sql.gz | docker exec -i ctm-postgres psql -U ctm ctm
+
+<span class="comment"># Restart services</span>
+docker compose -f deploy/docker-compose.prod.yml start api-service collab-service</pre>
+
+  <h3>MinIO (file uploads) backup</h3>
+  <div class="code-label">server — bash</div>
+  <pre><span class="comment"># Sync MinIO buckets to a local directory</span>
+docker run --rm --network ctm_ctm-net \
+  -e MINIO_USER=$(cat /etc/ctm/secrets/minio_user.txt) \
+  -e MINIO_PASS=$(cat /etc/ctm/secrets/minio_password.txt) \
+  minio/mc sh -c \
+  "mc alias set local http://minio:9000 \$MINIO_USER \$MINIO_PASS && \
+   mc mirror local/ctm-attachments /backup/attachments"</pre>
+
+  <!-- ── Monitoring ─────────────────────────────────────────────────────── -->
+  <h2 id="monitoring">📊 Monitoring</h2>
+
+  <h3>View logs</h3>
+  <div class="code-label">server — bash</div>
+  <pre><span class="comment"># All services</span>
+docker compose -f deploy/docker-compose.prod.yml logs -f
+
+<span class="comment"># Single service</span>
+docker compose -f deploy/docker-compose.prod.yml logs -f api-service
+
+<span class="comment"># Last 100 lines from AI service</span>
+docker compose -f deploy/docker-compose.prod.yml logs --tail=100 ai-service</pre>
+
+  <h3>Resource usage</h3>
+  <div class="code-label">server — bash</div>
+  <pre><span class="comment"># Live CPU + memory per container</span>
+docker stats
+
+<span class="comment"># Disk usage by Docker</span>
+docker system df</pre>
+
+  <h3>Health check all services</h3>
+  <div class="code-label">server — bash</div>
+  <pre>docker compose -f deploy/docker-compose.prod.yml ps --format \
+  "table {{.Name}}\t{{.Status}}\t{{.Health}}"</pre>
+
+  <!-- ── Scaling ─────────────────────────────────────────────────────────── -->
+  <h2 id="scaling">📈 Scaling</h2>
+
+  <p>To handle more users, you can scale the stateless application services horizontally:</p>
+
+  <div class="code-label">server — bash</div>
+  <pre><span class="comment"># Scale API Gateway to 3 replicas</span>
+docker compose -f deploy/docker-compose.prod.yml up -d --scale api-service=3
+
+<span class="comment"># Scale AI service to 2 replicas</span>
+docker compose -f deploy/docker-compose.prod.yml up -d --scale ai-service=2</pre>
+
+  <div class="callout warning">
+    <div class="callout-icon">⚠️</div>
+    <div class="callout-body">
+      <strong>Services that cannot be scaled on a single server</strong>
+      <ul style="margin-top:6px; margin-left:16px;">
+        <li><code>collab-service</code> — uses Redis adapter for multi-pod scaling; OK to scale</li>
+        <li><code>postgres</code> — single primary; use managed PostgreSQL (RDS, Cloud SQL) for HA</li>
+        <li><code>keycloak</code> — needs Infinispan clustering for multi-pod; use managed identity for large scale</li>
+        <li><code>kafka</code> — needs multi-broker KRaft quorum for HA; single broker is fine for &lt;10k users</li>
+      </ul>
+    </div>
+  </div>
+
+  <!-- ── Troubleshooting ────────────────────────────────────────────────── -->
+  <h2 id="troubleshooting">🔧 Troubleshooting</h2>
+
+  <h3>A container keeps restarting</h3>
+  <div class="code-label">server — bash</div>
+  <pre><span class="comment"># View the last error</span>
+docker logs --tail=50 ctm-api
+
+<span class="comment"># Check exit code</span>
+docker inspect ctm-api --format "{{.State.ExitCode}}"</pre>
+
+  <h3>Keycloak cannot connect to PostgreSQL</h3>
+  <p>This usually means PostgreSQL is not listening on the Docker network. Check:</p>
+  <div class="code-label">server — bash</div>
+  <pre><span class="comment"># Verify PostgreSQL is listening on all interfaces</span>
+docker exec ctm-postgres psql -U ctm -c "SHOW listen_addresses;"
+<span class="comment"># Expected: *</span>
+
+<span class="comment"># If it shows 'localhost', restart PostgreSQL</span>
+docker compose -f deploy/docker-compose.prod.yml restart postgres</pre>
+
+  <h3>SSL certificate errors</h3>
+  <div class="code-label">server — bash</div>
+  <pre><span class="comment"># Check certificate expiry</span>
+docker exec ctm-nginx openssl s_client -connect localhost:443 2>/dev/null | \
+  openssl x509 -noout -dates
+
+<span class="comment"># Force certificate renewal</span>
+docker compose -f deploy/docker-compose.prod.yml run --rm certbot certbot renew --force-renewal</pre>
+
+  <h3>Out of disk space</h3>
+  <div class="code-label">server — bash</div>
+  <pre><span class="comment"># See what's using space</span>
+docker system df -v
+
+<span class="comment"># Remove unused images and containers</span>
+docker system prune -f
+
+<span class="comment"># Remove old backup files</span>
+find /backups -name "*.sql.gz" -mtime +30 -delete</pre>
+
+  <h3>Reset the entire platform (WARNING: deletes all data)</h3>
+  <div class="code-label">server — bash</div>
+  <pre><span class="comment"># Stop and remove all containers, volumes, and images</span>
+docker compose -f deploy/docker-compose.prod.yml down -v --rmi all
+
+<span class="comment"># Redeploy from scratch</span>
+bash deploy/scripts/deploy.sh --rebuild</pre>
+
+  <div class="callout danger">
+    <div class="callout-icon">🚨</div>
+    <div class="callout-body">
+      <strong>The <code>-v</code> flag deletes all data volumes permanently</strong>
+      This includes all spreadsheet data, user accounts, chat messages, and uploaded files. Always create a backup before running this command.
+    </div>
+  </div>
+
+  <hr />
+
+  <!-- ── Quick Reference ────────────────────────────────────────────────── -->
+  <h2>📌 Quick Reference</h2>
+
+  <div class="table-wrap">
+    <table>
+      <thead><tr><th>Task</th><th>Command</th></tr></thead>
+      <tbody>
+        <tr><td>Deploy / update</td><td><code>bash deploy/scripts/deploy.sh</code></td></tr>
+        <tr><td>Force rebuild</td><td><code>bash deploy/scripts/deploy.sh --rebuild</code></td></tr>
+        <tr><td>View all logs</td><td><code>docker compose -f deploy/docker-compose.prod.yml logs -f</code></td></tr>
+        <tr><td>Container status</td><td><code>docker compose -f deploy/docker-compose.prod.yml ps</code></td></tr>
+        <tr><td>Restart service</td><td><code>docker compose -f deploy/docker-compose.prod.yml restart api-service</code></td></tr>
+        <tr><td>Stop everything</td><td><code>docker compose -f deploy/docker-compose.prod.yml down</code></td></tr>
+        <tr><td>Backup database</td><td><code>docker exec ctm-postgres pg_dump -U ctm ctm | gzip > backup.sql.gz</code></td></tr>
+        <tr><td>Renew SSL cert</td><td><code>docker compose -f deploy/docker-compose.prod.yml run --rm certbot certbot renew</code></td></tr>
+        <tr><td>Container resource usage</td><td><code>docker stats</code></td></tr>
+        <tr><td>View Keycloak admin password</td><td><code>cat /etc/ctm/secrets/keycloak_admin_password.txt</code></td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <footer>
+    <p>CTM Platform · Architecture C · Production Deployment Guide · Version 1.0 · May 2026</p>
+    <p style="margin-top:6px;">Repository: <a href="https://github.com/morrissnhsieh-sudo/CTM" target="_blank">github.com/morrissnhsieh-sudo/CTM</a></p>
+  </footer>
+
+</main>
+</div>
+
+</body>
+</html>
