@@ -1,8 +1,8 @@
 import type { FastifyPluginAsync } from 'fastify'
 import { z } from 'zod'
-import { eq, and, isNull, asc, inArray, sql } from 'drizzle-orm'
+import { eq, and, isNull, asc, gt, inArray, sql } from 'drizzle-orm'
 import { rows, cells, sheets, columns } from '../db/schema.js'
-import { withRls } from '../db/helpers.js'
+import { withRls, paginated, cursorPaginated, decodeCursor, selectFields } from '../db/helpers.js'
 import { hasMinRole } from '@ctm/shared-types'
 import { v4 as uuid } from 'uuid'
 
@@ -19,10 +19,20 @@ const UpdateRowBody = z.object({
 
 export const rowsRouter: FastifyPluginAsync = async (app) => {
   // GET /sheets/:sheetId/rows
+  // Supports:
+  //   offset pagination: ?page=1&pageSize=100  (default)
+  //   cursor pagination: ?cursor=<base64>&pageSize=500  (for large exports, stable)
+  //   field selection:   ?fields=id,position,cells
   app.get('/:sheetId/rows', async (request, reply) => {
     const { sheetId } = request.params as { sheetId: string }
-    const { page = 1, pageSize = 100 } = request.query as { page?: number; pageSize?: number }
-    const offset = (page - 1) * Math.min(pageSize, 500)
+    const {
+      page     = 1,
+      pageSize = 100,
+      cursor,
+      fields,
+    } = request.query as { page?: number; pageSize?: number; cursor?: string; fields?: string }
+
+    const limit = Math.min(pageSize, 1000)
 
     const result = await withRls(app.db, request, async (tx) => {
       // Verify sheet belongs to workspace
@@ -32,27 +42,59 @@ export const rowsRouter: FastifyPluginAsync = async (app) => {
 
       if (!sheet) return null
 
+      // ── Cursor-based pagination ─────────────────────────────────────────────
+      if (cursor) {
+        const decoded = decodeCursor(cursor)
+        if (!decoded) {
+          return 'invalid_cursor' as const
+        }
+
+        const rowList = await tx
+          .select()
+          .from(rows)
+          .where(and(
+            eq(rows.sheetId, sheetId),
+            isNull(rows.deletedAt),
+            // Rows after the cursor (position > lastPosition, or same position but id > lastId)
+            gt(rows.position, decoded.lastPosition),
+          ))
+          .orderBy(asc(rows.position))
+          .limit(limit)
+
+        if (!rowList.length) return { mode: 'cursor' as const, rows: [], cells: [] }
+
+        const rowIds = rowList.map((r) => r.id)
+        const cellList = await tx.select().from(cells).where(inArray(cells.rowId, rowIds))
+        return { mode: 'cursor' as const, rows: rowList, cells: cellList }
+      }
+
+      // ── Offset-based pagination ─────────────────────────────────────────────
+      const offset = (page - 1) * limit
+
       const rowList = await tx
         .select()
         .from(rows)
         .where(and(eq(rows.sheetId, sheetId), isNull(rows.deletedAt)))
         .orderBy(asc(rows.position))
-        .limit(Math.min(pageSize, 500))
+        .limit(limit)
         .offset(offset)
 
-      if (!rowList.length) return { rows: [], cells: [] }
+      if (!rowList.length) return { mode: 'offset' as const, rows: [], cells: [] }
 
-      const rowIds = rowList.map(r => r.id)
-      const cellList = await tx
-        .select()
-        .from(cells)
-        .where(inArray(cells.rowId, rowIds))
-
-      return { rows: rowList, cells: cellList }
+      const rowIds = rowList.map((r) => r.id)
+      const cellList = await tx.select().from(cells).where(inArray(cells.rowId, rowIds))
+      return { mode: 'offset' as const, rows: rowList, cells: cellList }
     })
 
     if (!result) {
-      return reply.code(404).send({ error: { code: 'SHEET_NOT_FOUND', message: `Sheet ${sheetId} not found`, requestId: request.id } })
+      return reply.code(404).send({
+        error: { code: 'SHEET_NOT_FOUND', message: `Sheet ${sheetId} not found`, requestId: request.id },
+      })
+    }
+    if (result === 'invalid_cursor') {
+      return reply.code(400).send({
+        error: { code: 'VALIDATION_ERROR', message: 'Invalid or expired cursor', requestId: request.id },
+      })
     }
 
     // Group cells by rowId
@@ -61,8 +103,19 @@ export const rowsRouter: FastifyPluginAsync = async (app) => {
       ;(cellsByRow[cell.rowId] ??= []).push(cell)
     }
 
-    const data = result.rows.map(r => ({ ...r, cells: cellsByRow[r.id] ?? [] }))
-    return { data, requestId: request.id }
+    const data = result.rows.map((r) => ({ ...r, cells: cellsByRow[r.id] ?? [] }))
+    const withFields = selectFields(data, fields)
+
+    // Return appropriate pagination format
+    if (result.mode === 'cursor') {
+      return cursorPaginated(
+        result.rows.map((r) => ({ ...r, cells: cellsByRow[r.id] ?? [] })),
+        limit,
+        request.id as string,
+      )
+    }
+
+    return paginated(withFields, withFields.length, page, limit, request.id as string)
   })
 
   // POST /sheets/:sheetId/rows — bulk insert

@@ -2,7 +2,7 @@ import type { FastifyPluginAsync } from 'fastify'
 import { z } from 'zod'
 import { eq, and, isNull, desc } from 'drizzle-orm'
 import { sheets, columns, rows } from '../db/schema.js'
-import { withRls, paginated } from '../db/helpers.js'
+import { withRls, paginated, selectFields } from '../db/helpers.js'
 import { hasMinRole } from '@ctm/shared-types'
 import { v4 as uuid } from 'uuid'
 
@@ -20,8 +20,13 @@ const UpdateSheetBody = z.object({
 
 export const sheetsRouter: FastifyPluginAsync = async (app) => {
   // GET /sheets — list workspace sheets
+  // ?fields=id,title,updatedAt  — field selection (Smartsheet-compatible)
   app.get('/', async (request, reply) => {
-    const { page = 1, pageSize = 100 } = request.query as { page?: number; pageSize?: number }
+    const {
+      page     = 1,
+      pageSize = 100,
+      fields,
+    } = request.query as { page?: number; pageSize?: number; fields?: string }
     const offset = (page - 1) * Math.min(pageSize, 500)
 
     const result = await withRls(app.db, request, async (tx) =>
@@ -37,7 +42,8 @@ export const sheetsRouter: FastifyPluginAsync = async (app) => {
         .offset(offset),
     )
 
-    return paginated(result, result.length, page, pageSize, request.id as string)
+    const filtered = selectFields(result, fields)
+    return paginated(filtered, filtered.length, page, pageSize, request.id as string)
   })
 
   // POST /sheets — create sheet
@@ -80,8 +86,10 @@ export const sheetsRouter: FastifyPluginAsync = async (app) => {
   })
 
   // GET /sheets/:id
+  // ?fields=id,title,columns  — field selection (Smartsheet-compatible)
   app.get('/:id', async (request, reply) => {
     const { id } = request.params as { id: string }
+    const { fields } = request.query as { fields?: string }
 
     const result = await withRls(app.db, request, async (tx) =>
       tx
@@ -95,7 +103,7 @@ export const sheetsRouter: FastifyPluginAsync = async (app) => {
       return reply.code(404).send({ error: { code: 'SHEET_NOT_FOUND', message: `Sheet ${id} not found`, requestId: request.id } })
     }
 
-    return { data: result[0], requestId: request.id }
+    return { data: selectFields(result[0], fields), requestId: request.id }
   })
 
   // PUT /sheets/:id

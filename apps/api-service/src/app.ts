@@ -19,6 +19,10 @@ import { aiRouter } from './routes/ai.js'
 import { webhooksRouter } from './routes/webhooks.js'
 import { pmRouter } from './routes/pm.js'
 import { searchRouter } from './routes/search.js'
+import { copyRouter } from './routes/copy.js'
+import { exportRouter } from './routes/export.js'
+import { importRouter } from './routes/import.js'
+import { discussionsRouter } from './routes/discussions.js'
 import { mcpRouter } from './mcp/router.js'
 
 import cors from '@fastify/cors'
@@ -50,16 +54,20 @@ export async function buildApp(app: FastifyInstance) {
   // ─── API Routes (v1) ─────────────────────────────────────
   await app.register(
     async (v1) => {
-      v1.register(workspacesRouter, { prefix: '/workspaces' })
-      v1.register(sheetsRouter,     { prefix: '/sheets' })
-      v1.register(rowsRouter,       { prefix: '/sheets' })
-      v1.register(columnsRouter,    { prefix: '/sheets' })
-      v1.register(cellsRouter,      { prefix: '/sheets' })
-      v1.register(usersRouter,      { prefix: '/users' })
-      v1.register(aiRouter,         { prefix: '/ai' })
-      v1.register(webhooksRouter,   { prefix: '/webhooks' })
-      v1.register(pmRouter,         { prefix: '/projects' })
-      v1.register(searchRouter,     { prefix: '/search' })
+      v1.register(workspacesRouter,  { prefix: '/workspaces' })
+      v1.register(sheetsRouter,      { prefix: '/sheets' })
+      v1.register(copyRouter,        { prefix: '/sheets' })       // POST /sheets/:id/copy
+      v1.register(discussionsRouter, { prefix: '/sheets' })       // GET/POST /sheets/:id/discussions
+      v1.register(rowsRouter,        { prefix: '/sheets' })
+      v1.register(columnsRouter,     { prefix: '/sheets' })
+      v1.register(cellsRouter,       { prefix: '/sheets' })
+      v1.register(usersRouter,       { prefix: '/users' })
+      v1.register(aiRouter,          { prefix: '/ai' })
+      v1.register(webhooksRouter,    { prefix: '/webhooks' })
+      v1.register(pmRouter,          { prefix: '/projects' })
+      v1.register(searchRouter,      { prefix: '/search' })
+      v1.register(exportRouter,      { prefix: '/export' })       // POST /export/:sheetId
+      v1.register(importRouter,      { prefix: '/import' })       // POST /import
     },
     { prefix: '/v1' },
   )
