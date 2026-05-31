@@ -1,0 +1,400 @@
+# ============================================================
+# CTM Platform — Production Docker Compose
+#
+# Usage:
+#   docker compose -f docker-compose.prod.yml up -d
+#
+# Requirements on the host:
+#   - Docker Engine 24+
+#   - All secrets in /etc/ctm/secrets/ (see deploy/scripts/setup-secrets.sh)
+#   - Domain DNS pointing to this server
+#   - Ports 80 and 443 open
+# ============================================================
+
+networks:
+  ctm-net:
+    driver: bridge
+
+volumes:
+  postgres-data:
+  redis-data:
+  kafka-data:
+  minio-data:
+  keycloak-data:
+  certbot-conf:
+  certbot-www:
+
+services:
+
+  # ─── Nginx reverse proxy + SSL termination ───────────────────────────────────
+  nginx:
+    image: nginx:1.27-alpine
+    container_name: ctm-nginx
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./nginx/nginx.conf:/etc/nginx/nginx.conf:ro
+      - ./nginx/conf.d:/etc/nginx/conf.d:ro
+      - certbot-conf:/etc/letsencrypt:ro
+      - certbot-www:/var/www/certbot:ro
+    depends_on:
+      - frontend
+      - api-service
+      - collab-service
+      - messaging-service
+    restart: always
+    networks: [ctm-net]
+    healthcheck:
+      test: ["CMD", "nginx", "-t"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  # ─── SSL certificate renewal ─────────────────────────────────────────────────
+  certbot:
+    image: certbot/certbot
+    container_name: ctm-certbot
+    volumes:
+      - certbot-conf:/etc/letsencrypt
+      - certbot-www:/var/www/certbot
+    entrypoint: /bin/sh -c "trap exit TERM; while :; do certbot renew; sleep 12h & wait $${!}; done"
+    restart: unless-stopped
+
+  # ─── M9: PostgreSQL 16 ───────────────────────────────────────────────────────
+  postgres:
+    image: pgvector/pgvector:pg16
+    container_name: ctm-postgres
+    environment:
+      POSTGRES_USER_FILE:     /run/secrets/pg_user
+      POSTGRES_PASSWORD_FILE: /run/secrets/pg_password
+      POSTGRES_DB:            ctm
+    secrets:
+      - pg_user
+      - pg_password
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+      - ./infra/postgres/migrations:/docker-entrypoint-initdb.d:ro
+      - ./infra/postgres/postgresql.prod.conf:/etc/postgresql/postgresql.conf:ro
+    command: postgres -c config_file=/etc/postgresql/postgresql.conf
+    restart: always
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $(cat /run/secrets/pg_user) -d ctm"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks: [ctm-net]
+    # No external port — accessed only within ctm-net
+
+  # ─── M9: Redis 7.2 ───────────────────────────────────────────────────────────
+  redis:
+    image: redis:7.2-alpine
+    container_name: ctm-redis
+    command: >
+      redis-server
+      --requirepass-file /run/secrets/redis_password
+      --save 60 1
+      --loglevel warning
+    secrets:
+      - redis_password
+    volumes:
+      - redis-data:/data
+    restart: always
+    healthcheck:
+      test: ["CMD", "redis-cli", "-a", "$(cat /run/secrets/redis_password)", "ping"]
+      interval: 10s
+      retries: 3
+    networks: [ctm-net]
+
+  # ─── M8: Kafka 3.7 (KRaft) ───────────────────────────────────────────────────
+  kafka:
+    image: apache/kafka:3.7.0
+    container_name: ctm-kafka
+    environment:
+      KAFKA_NODE_ID: 1
+      KAFKA_PROCESS_ROLES: broker,controller
+      KAFKA_CONTROLLER_QUORUM_VOTERS: "1@kafka:9093"
+      KAFKA_LISTENERS: "PLAINTEXT://0.0.0.0:9092,CONTROLLER://0.0.0.0:9093"
+      KAFKA_ADVERTISED_LISTENERS: "PLAINTEXT://kafka:9092"
+      KAFKA_CONTROLLER_LISTENER_NAMES: CONTROLLER
+      KAFKA_INTER_BROKER_LISTENER_NAME: PLAINTEXT
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
+      KAFKA_TRANSACTION_STATE_LOG_REPLICATION_FACTOR: 1
+      KAFKA_TRANSACTION_STATE_LOG_MIN_ISR: 1
+      KAFKA_AUTO_CREATE_TOPICS_ENABLE: "true"
+      KAFKA_LOG_DIRS: /var/lib/kafka/data
+      CLUSTER_ID: "MkU3OEVBNTcwNTJENDM2Qk"
+      # Production: increase retention
+      KAFKA_LOG_RETENTION_HOURS: 168
+      KAFKA_LOG_SEGMENT_BYTES: 1073741824
+    volumes:
+      - kafka-data:/var/lib/kafka/data
+    restart: always
+    healthcheck:
+      test: ["CMD-SHELL", "/opt/kafka/bin/kafka-topics.sh --bootstrap-server localhost:9092 --list"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+    networks: [ctm-net]
+
+  # ─── M9: MinIO ────────────────────────────────────────────────────────────────
+  minio:
+    image: minio/minio:latest
+    container_name: ctm-minio
+    environment:
+      MINIO_ROOT_USER_FILE:     /run/secrets/minio_user
+      MINIO_ROOT_PASSWORD_FILE: /run/secrets/minio_password
+    secrets:
+      - minio_user
+      - minio_password
+    volumes:
+      - minio-data:/data
+    command: server /data --console-address ":9001"
+    restart: always
+    healthcheck:
+      test: ["CMD", "mc", "ready", "local"]
+      interval: 30s
+      retries: 3
+    networks: [ctm-net]
+
+  minio-init:
+    image: minio/mc:latest
+    container_name: ctm-minio-init
+    depends_on:
+      minio:
+        condition: service_healthy
+    entrypoint: >
+      /bin/sh -c "
+        mc alias set local http://minio:9000 $$(cat /run/secrets/minio_user) $$(cat /run/secrets/minio_password);
+        mc mb --ignore-existing local/ctm-attachments;
+        mc mb --ignore-existing local/ctm-exports;
+        mc mb --ignore-existing local/ctm-avatars;
+        mc mb --ignore-existing local/ctm-backups;
+        mc anonymous set download local/ctm-avatars;
+        echo 'Buckets ready';
+      "
+    secrets:
+      - minio_user
+      - minio_password
+    networks: [ctm-net]
+
+  # ─── M10: Keycloak 24 (production mode) ──────────────────────────────────────
+  keycloak:
+    image: quay.io/keycloak/keycloak:24.0
+    container_name: ctm-keycloak
+    environment:
+      KC_DB: postgres
+      KC_DB_URL: jdbc:postgresql://postgres:5432/ctm
+      KC_DB_USERNAME_FILE: /run/secrets/pg_user
+      KC_DB_PASSWORD_FILE: /run/secrets/pg_password
+      KC_DB_SCHEMA: keycloak
+      KEYCLOAK_ADMIN_FILE:          /run/secrets/keycloak_admin
+      KEYCLOAK_ADMIN_PASSWORD_FILE: /run/secrets/keycloak_admin_password
+      KC_HOSTNAME: ${DOMAIN}          # e.g. auth.ctm.app
+      KC_PROXY: edge                  # Nginx handles TLS
+      KC_HTTP_ENABLED: "true"
+      KC_HEALTH_ENABLED: "true"
+      KC_METRICS_ENABLED: "true"
+      KC_LOG_LEVEL: WARN
+    secrets:
+      - pg_user
+      - pg_password
+      - keycloak_admin
+      - keycloak_admin_password
+    command: start --import-realm
+    volumes:
+      - ./infra/keycloak/realm-export.json:/opt/keycloak/data/import/realm-export.json:ro
+    depends_on:
+      postgres:
+        condition: service_healthy
+    restart: always
+    healthcheck:
+      test: ["CMD-SHELL", "exec 3<>/dev/tcp/localhost/8080 && echo -e 'GET /health/ready HTTP/1.0\r\n\r\n' >&3 && cat <&3 | grep -q UP"]
+      interval: 30s
+      timeout: 10s
+      retries: 10
+      start_period: 60s
+    networks: [ctm-net]
+
+  # ─── M2: Collaboration Engine ─────────────────────────────────────────────────
+  collab-service:
+    image: ${REGISTRY}/ctm-collab:${VERSION:-latest}
+    container_name: ctm-collab
+    build:
+      context: .
+      dockerfile: apps/collab-service/Dockerfile
+    environment:
+      NODE_ENV: production
+      PORT: "1234"
+      DB_URL: postgresql://${PG_USER}:${PG_PASSWORD}@postgres:5432/ctm
+      REDIS_URL: redis://:${REDIS_PASSWORD}@redis:6379
+      KAFKA_BROKERS: kafka:9092
+      KEYCLOAK_JWKS_URI: https://${DOMAIN}/realms/ctm/protocol/openid-connect/certs
+      KEYCLOAK_ISSUER: https://${DOMAIN}/realms/ctm
+    depends_on:
+      postgres: { condition: service_healthy }
+      redis:    { condition: service_healthy }
+      kafka:    { condition: service_healthy }
+      keycloak: { condition: service_healthy }
+    restart: always
+    networks: [ctm-net]
+
+  # ─── M3+M4: API Gateway ───────────────────────────────────────────────────────
+  api-service:
+    image: ${REGISTRY}/ctm-api:${VERSION:-latest}
+    container_name: ctm-api
+    build:
+      context: .
+      dockerfile: apps/api-service/Dockerfile
+    environment:
+      NODE_ENV: production
+      PORT: "3001"
+      DB_PRIMARY_URL: postgresql://${PG_USER}:${PG_PASSWORD}@postgres:5432/ctm
+      REDIS_URL: redis://:${REDIS_PASSWORD}@redis:6379
+      KAFKA_BROKERS: kafka:9092
+      KEYCLOAK_JWKS_URI: https://${DOMAIN}/realms/ctm/protocol/openid-connect/certs
+      KEYCLOAK_ISSUER: https://${DOMAIN}/realms/ctm
+      PM_GRPC_HOST: pm-service:50051
+      AI_SERVICE_URL: http://ai-service:8001
+      MESSAGING_SERVICE_URL: http://messaging-service:3002
+      INTERNAL_TOKEN_SECRET: ${INTERNAL_TOKEN_SECRET}
+      S3_ENDPOINT: http://minio:9000
+      AWS_ACCESS_KEY_ID: ${MINIO_USER}
+      AWS_SECRET_ACCESS_KEY: ${MINIO_PASSWORD}
+      S3_BUCKET_ATTACHMENTS: ctm-attachments
+      S3_BUCKET_EXPORTS: ctm-exports
+      ALLOWED_ORIGINS: https://${DOMAIN},https://app.${DOMAIN}
+    depends_on:
+      postgres: { condition: service_healthy }
+      redis:    { condition: service_healthy }
+      kafka:    { condition: service_healthy }
+    restart: always
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:3001/health || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+    networks: [ctm-net]
+
+  # ─── M5: PM Service ───────────────────────────────────────────────────────────
+  pm-service:
+    image: ${REGISTRY}/ctm-pm:${VERSION:-latest}
+    container_name: ctm-pm
+    build:
+      context: .
+      dockerfile: apps/pm-service/Dockerfile
+    environment:
+      DB_URL: postgresql://${PG_USER}:${PG_PASSWORD}@postgres:5432/ctm
+      REDIS_URL: redis://:${REDIS_PASSWORD}@redis:6379
+      KAFKA_BROKERS: kafka:9092
+      GRPC_ADDR: ":50051"
+      HTTP_ADDR: ":8080"
+    depends_on:
+      postgres: { condition: service_healthy }
+      kafka:    { condition: service_healthy }
+    restart: always
+    networks: [ctm-net]
+
+  # ─── M6: AI Agent Service ─────────────────────────────────────────────────────
+  ai-service:
+    image: ${REGISTRY}/ctm-ai:${VERSION:-latest}
+    container_name: ctm-ai
+    build:
+      context: .
+      dockerfile: apps/ai-service/Dockerfile
+    environment:
+      PORT: "8001"
+      DB_URL: postgresql+asyncpg://${PG_USER}:${PG_PASSWORD}@postgres:5432/ctm
+      REDIS_URL: redis://:${REDIS_PASSWORD}@redis:6379
+      KAFKA_BROKERS: kafka:9092
+      LLM_PROVIDER: vertex
+      GOOGLE_APPLICATION_CREDENTIALS: /run/secrets/vertex_key
+      VERTEX_PROJECT_ID: ${VERTEX_PROJECT_ID}
+      VERTEX_REGION: ${VERTEX_REGION:-us-east5}
+      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
+      CTM_API_URL: http://api-service:3001
+      FORMULA_CALLBACK_URL: http://api-service:3001/v1/ai/formula/callback
+    secrets:
+      - vertex_key
+    volumes:
+      - /etc/ctm/secrets/vertex_key.json:/run/secrets/vertex_key:ro
+    depends_on:
+      postgres: { condition: service_healthy }
+      redis:    { condition: service_healthy }
+      kafka:    { condition: service_healthy }
+    restart: always
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:8001/health || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+    networks: [ctm-net]
+
+  # ─── M7: Messaging Service ────────────────────────────────────────────────────
+  messaging-service:
+    image: ${REGISTRY}/ctm-messaging:${VERSION:-latest}
+    container_name: ctm-messaging
+    build:
+      context: .
+      dockerfile: apps/messaging-service/Dockerfile
+    environment:
+      NODE_ENV: production
+      PORT: "3002"
+      DB_URL: postgresql://${PG_USER}:${PG_PASSWORD}@postgres:5432/ctm
+      REDIS_URL: redis://:${REDIS_PASSWORD}@redis:6379
+      KAFKA_BROKERS: kafka:9092
+      KEYCLOAK_JWKS_URI: https://${DOMAIN}/realms/ctm/protocol/openid-connect/certs
+      KEYCLOAK_ISSUER: https://${DOMAIN}/realms/ctm
+      RESEND_API_KEY: ${RESEND_API_KEY:-}
+    depends_on:
+      postgres: { condition: service_healthy }
+      redis:    { condition: service_healthy }
+      kafka:    { condition: service_healthy }
+    restart: always
+    networks: [ctm-net]
+
+  # ─── M1: Frontend ─────────────────────────────────────────────────────────────
+  frontend:
+    image: ${REGISTRY}/ctm-frontend:${VERSION:-latest}
+    container_name: ctm-frontend
+    build:
+      context: .
+      dockerfile: apps/frontend/Dockerfile
+      target: production
+      args:
+        NEXT_PUBLIC_API_URL: https://api.${DOMAIN}
+        NEXT_PUBLIC_COLLAB_URL: wss://collab.${DOMAIN}
+        NEXT_PUBLIC_CHAT_URL: wss://chat.${DOMAIN}
+    environment:
+      NEXTAUTH_URL: https://app.${DOMAIN}
+      NEXTAUTH_SECRET: ${NEXTAUTH_SECRET}
+      KEYCLOAK_CLIENT_ID: ctm-web
+      KEYCLOAK_ISSUER: https://auth.${DOMAIN}/realms/ctm
+      NODE_ENV: production
+    restart: always
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:3000 || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+    networks: [ctm-net]
+
+# ─── Docker Secrets ───────────────────────────────────────────────────────────
+# Files must exist at /etc/ctm/secrets/ on the host before deployment
+secrets:
+  pg_user:
+    file: /etc/ctm/secrets/pg_user.txt
+  pg_password:
+    file: /etc/ctm/secrets/pg_password.txt
+  redis_password:
+    file: /etc/ctm/secrets/redis_password.txt
+  minio_user:
+    file: /etc/ctm/secrets/minio_user.txt
+  minio_password:
+    file: /etc/ctm/secrets/minio_password.txt
+  keycloak_admin:
+    file: /etc/ctm/secrets/keycloak_admin.txt
+  keycloak_admin_password:
+    file: /etc/ctm/secrets/keycloak_admin_password.txt
+  vertex_key:
+    file: /etc/ctm/secrets/vertex_key.json
