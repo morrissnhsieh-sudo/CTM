@@ -15,39 +15,40 @@
 #>
 
 param(
-    [switch]$Rebuild,           # pass --build to docker compose up
-    [switch]$NoHealthWait,      # skip waiting for health checks
-    [bool]$Detach = $true       # run in background (default: yes)
+    [switch]$Rebuild,
+    [switch]$NoHealthWait,
+    [bool]$Detach = $true
 )
 
 Set-StrictMode -Version Latest
 $ErrorActionPreference = "Stop"
 
-# ─── Colours ─────────────────────────────────────────────────────────────────
-function Write-Header  { param($msg) Write-Host "`n  $msg" -ForegroundColor Cyan }
+# ---- Colours ----------------------------------------------------------------
+function Write-Header  { param($msg) Write-Host "" ; Write-Host "  $msg" -ForegroundColor Cyan }
 function Write-Ok      { param($msg) Write-Host "  [OK]  $msg" -ForegroundColor Green }
 function Write-Warn    { param($msg) Write-Host "  [!!]  $msg" -ForegroundColor Yellow }
 function Write-Fail    { param($msg) Write-Host "  [X]   $msg" -ForegroundColor Red }
 function Write-Step    { param($msg) Write-Host "  -->   $msg" -ForegroundColor DarkCyan }
-function Write-Divider { Write-Host ("  " + ("─" * 60)) -ForegroundColor DarkGray }
+function Write-Divider { Write-Host ("  " + ("-" * 60)) -ForegroundColor DarkGray }
 
-# ─── Root directory ───────────────────────────────────────────────────────────
+# ---- Root directory ---------------------------------------------------------
 $Root = $PSScriptRoot
 Set-Location $Root
 
 Write-Host ""
-Write-Host "  ╔══════════════════════════════════════════════════════════╗" -ForegroundColor Cyan
-Write-Host "  ║          CTM Platform  ·  Start All Services            ║" -ForegroundColor Cyan
-Write-Host "  ╚══════════════════════════════════════════════════════════╝" -ForegroundColor Cyan
+Write-Host "  ================================================================" -ForegroundColor Cyan
+Write-Host "  |        CTM Platform  -  Start All Services                  |" -ForegroundColor Cyan
+Write-Host "  ================================================================" -ForegroundColor Cyan
 Write-Host ""
 
-# ─── Step 1: Pre-flight checks ────────────────────────────────────────────────
-Write-Header "Step 1 — Pre-flight checks"
+# ============================================================
+# Step 1: Pre-flight checks
+# ============================================================
+Write-Header "Step 1 - Pre-flight checks"
 
-# Docker
 try {
     $dockerVer = docker version --format "{{.Server.Version}}" 2>$null
-    if (-not $dockerVer) { throw }
+    if (-not $dockerVer) { throw "Docker not running" }
     Write-Ok "Docker Engine $dockerVer"
 } catch {
     Write-Fail "Docker is not running or not installed."
@@ -55,10 +56,9 @@ try {
     exit 1
 }
 
-# Docker Compose
 try {
     $composeVer = docker compose version --short 2>$null
-    if (-not $composeVer) { throw }
+    if (-not $composeVer) { throw "Compose not found" }
     Write-Ok "Docker Compose $composeVer"
 } catch {
     Write-Fail "docker compose plugin not found."
@@ -66,7 +66,6 @@ try {
     exit 1
 }
 
-# Vertex AI key
 $VertexKeyDefault = "C:\Users\User\Code\VertexKeys\d-sxd110x-ssd1-aaos-34f80b5f4448.json"
 if (Test-Path $VertexKeyDefault) {
     Write-Ok "Vertex AI key found: $VertexKeyDefault"
@@ -77,8 +76,10 @@ if (Test-Path $VertexKeyDefault) {
 
 Write-Divider
 
-# ─── Step 2: .env file ────────────────────────────────────────────────────────
-Write-Header "Step 2 — Environment configuration"
+# ============================================================
+# Step 2: .env file
+# ============================================================
+Write-Header "Step 2 - Environment configuration"
 
 $EnvFile    = Join-Path $Root ".env"
 $EnvExample = Join-Path $Root ".env.example"
@@ -89,16 +90,15 @@ if (-not (Test-Path $EnvFile)) {
         Write-Ok ".env created from .env.example"
         Write-Warn "Review $EnvFile and add any missing secrets before proceeding."
     } else {
-        Write-Fail ".env and .env.example not found — cannot continue."
+        Write-Fail ".env and .env.example not found."
         exit 1
     }
 } else {
     Write-Ok ".env found"
 }
 
-# Ensure VERTEX_KEY_PATH is set in .env if not already
 $envContent = Get-Content $EnvFile -Raw
-if ($envContent -notmatch "^VERTEX_KEY_PATH\s*=\s*\S" ) {
+if ($envContent -notmatch "VERTEX_KEY_PATH") {
     Add-Content $EnvFile "`nVERTEX_KEY_PATH=$VertexKeyDefault"
     Write-Ok "VERTEX_KEY_PATH written to .env"
 } else {
@@ -107,33 +107,40 @@ if ($envContent -notmatch "^VERTEX_KEY_PATH\s*=\s*\S" ) {
 
 Write-Divider
 
-# ─── Step 3: Start infrastructure (PostgreSQL, Redis, Kafka, MinIO, Keycloak) ─
-Write-Header "Step 3 — Starting infrastructure services"
+# ============================================================
+# Step 3: Start infrastructure
+# ============================================================
+Write-Header "Step 3 - Starting infrastructure services"
 
 $infraServices = @("postgres", "redis", "kafka", "minio")
 
-Write-Step "Pulling / building infrastructure images…"
+Write-Step "Pulling infrastructure images..."
 docker compose pull $infraServices --quiet 2>$null
+
 if ($Rebuild) {
+    Write-Step "Building infrastructure images..."
     docker compose build $infraServices --quiet
 }
 
-Write-Step "Bringing up: $($infraServices -join ', ')"
+Write-Step "Starting: $($infraServices -join ', ')"
 docker compose up -d $infraServices
-if ($LASTEXITCODE -ne 0) { Write-Fail "docker compose up failed for infra"; exit 1 }
+if ($LASTEXITCODE -ne 0) {
+    Write-Fail "docker compose up failed for infrastructure"
+    exit 1
+}
 
-# Kafka UI (no health check — start in background right away)
 docker compose up -d kafka-ui 2>$null
 
-# MinIO bucket init job
-Write-Step "Initialising MinIO buckets…"
+Write-Step "Initialising MinIO buckets..."
 docker compose up minio-init 2>$null | Out-Null
 
 Write-Divider
 
-# ─── Step 4: Wait for infrastructure health ───────────────────────────────────
+# ============================================================
+# Step 4: Wait for infrastructure health
+# ============================================================
 if (-not $NoHealthWait) {
-    Write-Header "Step 4 — Waiting for infrastructure health checks"
+    Write-Header "Step 4 - Waiting for infrastructure health checks"
 
     $healthTargets = @{
         "ctm-postgres" = 60
@@ -143,15 +150,18 @@ if (-not $NoHealthWait) {
     }
 
     foreach ($container in $healthTargets.Keys) {
-        $timeout = $healthTargets[$container]
-        Write-Step "Waiting for $container (timeout: ${timeout}s)…"
-        $elapsed = 0
+        $timeout  = $healthTargets[$container]
+        $elapsed  = 0
         $interval = 3
         $healthy  = $false
 
+        Write-Step "Waiting for $container (timeout: ${timeout}s)..."
         while ($elapsed -lt $timeout) {
             $status = docker inspect --format "{{.State.Health.Status}}" $container 2>$null
-            if ($status -eq "healthy") { $healthy = $true; break }
+            if ($status -eq "healthy") {
+                $healthy = $true
+                break
+            }
             Start-Sleep $interval
             $elapsed += $interval
             Write-Host "    [$elapsed s] status: $status" -ForegroundColor DarkGray
@@ -160,39 +170,58 @@ if (-not $NoHealthWait) {
         if ($healthy) {
             Write-Ok "$container is healthy"
         } else {
-            Write-Warn "$container did not become healthy within ${timeout}s — continuing anyway"
+            Write-Warn "$container did not become healthy within ${timeout}s - continuing anyway"
         }
     }
 }
 
 Write-Divider
 
-# ─── Step 5: Start Keycloak (depends on postgres) ─────────────────────────────
-Write-Header "Step 5 — Starting Keycloak (M10 Auth)"
+# ============================================================
+# Step 5: Start Keycloak
+# ============================================================
+Write-Header "Step 5 - Starting Keycloak (M10 Auth)"
 
-Write-Step "Starting ctm-keycloak…"
+Write-Step "Starting ctm-keycloak..."
 docker compose up -d keycloak
-if ($LASTEXITCODE -ne 0) { Write-Fail "Failed to start keycloak"; exit 1 }
+if ($LASTEXITCODE -ne 0) {
+    Write-Fail "Failed to start keycloak"
+    exit 1
+}
 
 if (-not $NoHealthWait) {
-    Write-Step "Waiting for Keycloak to be ready (up to 120s)…"
-    $elapsed = 0; $healthy = $false
+    Write-Step "Waiting for Keycloak to be ready (up to 120s)..."
+    $elapsed = 0
+    $healthy = $false
+
     while ($elapsed -lt 120) {
         try {
-            $resp = Invoke-WebRequest -Uri "http://localhost:8080/health/ready" -TimeoutSec 3 -UseBasicParsing -ErrorAction SilentlyContinue
-            if ($resp.StatusCode -eq 200) { $healthy = $true; break }
-        } catch {}
-        Start-Sleep 5; $elapsed += 5
-        Write-Host "    [$elapsed s] waiting…" -ForegroundColor DarkGray
+            $resp = Invoke-WebRequest -Uri "http://localhost:8080/health/ready" `
+                -TimeoutSec 3 -UseBasicParsing -ErrorAction SilentlyContinue
+            if ($resp.StatusCode -eq 200) {
+                $healthy = $true
+                break
+            }
+        } catch { }
+
+        Start-Sleep 5
+        $elapsed += 5
+        Write-Host "    [$elapsed s] waiting..." -ForegroundColor DarkGray
     }
-    if ($healthy) { Write-Ok "Keycloak is ready" }
-    else { Write-Warn "Keycloak may still be starting — continuing anyway" }
+
+    if ($healthy) {
+        Write-Ok "Keycloak is ready"
+    } else {
+        Write-Warn "Keycloak may still be starting - continuing anyway"
+    }
 }
 
 Write-Divider
 
-# ─── Step 6: Start application microservices ──────────────────────────────────
-Write-Header "Step 6 — Starting application microservices"
+# ============================================================
+# Step 6: Start application microservices
+# ============================================================
+Write-Header "Step 6 - Starting application microservices"
 
 $appServices = @(
     @{ name = "collab-service";    label = "M2 Collaboration Engine" }
@@ -203,13 +232,13 @@ $appServices = @(
 )
 
 foreach ($svc in $appServices) {
-    Write-Step "Starting $($svc.label)…"
+    Write-Step "Starting $($svc.label)..."
     if ($Rebuild) {
         docker compose build $svc.name --quiet
     }
     docker compose up -d $svc.name
     if ($LASTEXITCODE -ne 0) {
-        Write-Warn "Failed to start $($svc.name) — check logs: docker compose logs $($svc.name)"
+        Write-Warn "Failed to start $($svc.name) - check: docker compose logs $($svc.name)"
     } else {
         Write-Ok "$($svc.label) started"
     }
@@ -217,98 +246,133 @@ foreach ($svc in $appServices) {
 
 Write-Divider
 
-# ─── Step 7: Start Frontend (M1) ──────────────────────────────────────────────
-Write-Header "Step 7 — Starting Frontend (M1 — Next.js 15)"
+# ============================================================
+# Step 7: Start Frontend (M1)
+# ============================================================
+Write-Header "Step 7 - Starting Frontend (M1 - Next.js 15)"
 
-if ($Rebuild) { docker compose build frontend --quiet }
+if ($Rebuild) {
+    docker compose build frontend --quiet
+}
 docker compose up -d frontend
-if ($LASTEXITCODE -eq 0) { Write-Ok "Frontend started" }
-else { Write-Warn "Frontend failed — check: docker compose logs frontend" }
+if ($LASTEXITCODE -eq 0) {
+    Write-Ok "Frontend started"
+} else {
+    Write-Warn "Frontend failed - check: docker compose logs frontend"
+}
 
 Write-Divider
 
-# ─── Step 8: Wait for application health endpoints ────────────────────────────
+# ============================================================
+# Step 8: Wait for application health endpoints
+# ============================================================
 if (-not $NoHealthWait) {
-    Write-Header "Step 8 — Waiting for application health endpoints"
+    Write-Header "Step 8 - Waiting for application health endpoints"
 
     $healthEndpoints = @(
-        @{ url = "http://localhost:3001/health"; label = "M3 API Gateway";         timeout = 60 }
-        @{ url = "http://localhost:8001/health"; label = "M6 AI Service";          timeout = 90 }
-        @{ url = "http://localhost:3002/health"; label = "M7 Messaging Service";   timeout = 60 }
-        @{ url = "http://localhost:3000";        label = "M1 Frontend";            timeout = 90 }
+        @{ url = "http://localhost:3001/health"; label = "M3 API Gateway";       timeout = 60 }
+        @{ url = "http://localhost:8001/health"; label = "M6 AI Service";        timeout = 90 }
+        @{ url = "http://localhost:3002/health"; label = "M7 Messaging Service"; timeout = 60 }
+        @{ url = "http://localhost:3000";        label = "M1 Frontend";          timeout = 90 }
     )
 
     foreach ($ep in $healthEndpoints) {
-        Write-Step "Checking $($ep.label) at $($ep.url)…"
-        $elapsed = 0; $up = $false
+        Write-Step "Checking $($ep.label) at $($ep.url)..."
+        $elapsed = 0
+        $up = $false
+
         while ($elapsed -lt $ep.timeout) {
             try {
-                $resp = Invoke-WebRequest -Uri $ep.url -TimeoutSec 3 -UseBasicParsing -ErrorAction SilentlyContinue
-                if ($resp.StatusCode -lt 400) { $up = $true; break }
-            } catch {}
-            Start-Sleep 5; $elapsed += 5
-            Write-Host "    [$elapsed s] waiting…" -ForegroundColor DarkGray
+                $resp = Invoke-WebRequest -Uri $ep.url `
+                    -TimeoutSec 3 -UseBasicParsing -ErrorAction SilentlyContinue
+                if ($resp.StatusCode -lt 400) {
+                    $up = $true
+                    break
+                }
+            } catch { }
+
+            Start-Sleep 5
+            $elapsed += 5
+            Write-Host "    [$elapsed s] waiting..." -ForegroundColor DarkGray
         }
-        if ($up) { Write-Ok "$($ep.label) is up" }
-        else { Write-Warn "$($ep.label) did not respond in $($ep.timeout)s — may still be starting" }
+
+        if ($up) {
+            Write-Ok "$($ep.label) is up"
+        } else {
+            Write-Warn "$($ep.label) did not respond in $($ep.timeout)s - may still be starting"
+        }
     }
 }
 
 Write-Divider
 
-# ─── Step 9: Status summary ───────────────────────────────────────────────────
-Write-Header "Step 9 — Service status"
+# ============================================================
+# Step 9: Status summary
+# ============================================================
+Write-Header "Step 9 - Service status"
 
 $allContainers = @(
-    @{ container = "ctm-postgres";         label = "M9  PostgreSQL 16 + pgvector";    port = "5432" }
-    @{ container = "ctm-redis";            label = "M9  Redis 7.2";                   port = "6379" }
-    @{ container = "ctm-kafka";            label = "M8  Kafka 3.7 (KRaft)";           port = "9092" }
-    @{ container = "ctm-kafka-ui";         label = "M8  Kafka UI";                    port = "8090" }
-    @{ container = "ctm-minio";            label = "M9  MinIO (S3)";                  port = "9001" }
-    @{ container = "ctm-keycloak";         label = "M10 Keycloak 24";                 port = "8080" }
-    @{ container = "ctm-collab";           label = "M2  Collaboration Engine";        port = "1234" }
-    @{ container = "ctm-api";             label = "M3+M4 API Gateway + Formulas";    port = "3001" }
-    @{ container = "ctm-pm";              label = "M5  PM Service (Go)";             port = "8085" }
-    @{ container = "ctm-ai";             label = "M6  AI Agent Service";             port = "8001" }
-    @{ container = "ctm-messaging";       label = "M7  Messaging Service";           port = "3002" }
-    @{ container = "ctm-frontend";         label = "M1  Frontend (Next.js 15)";       port = "3000" }
+    @{ container = "ctm-postgres";   label = "M9  PostgreSQL 16 + pgvector";   port = "5432" }
+    @{ container = "ctm-redis";      label = "M9  Redis 7.2";                  port = "6379" }
+    @{ container = "ctm-kafka";      label = "M8  Kafka 3.7 (KRaft)";          port = "9092" }
+    @{ container = "ctm-kafka-ui";   label = "M8  Kafka UI";                   port = "8090" }
+    @{ container = "ctm-minio";      label = "M9  MinIO (S3)";                 port = "9001" }
+    @{ container = "ctm-keycloak";   label = "M10 Keycloak 24";                port = "8080" }
+    @{ container = "ctm-collab";     label = "M2  Collaboration Engine";       port = "1234" }
+    @{ container = "ctm-api";        label = "M3+M4 API Gateway + Formulas";   port = "3001" }
+    @{ container = "ctm-pm";         label = "M5  PM Service (Go)";            port = "8085" }
+    @{ container = "ctm-ai";         label = "M6  AI Agent Service";           port = "8001" }
+    @{ container = "ctm-messaging";  label = "M7  Messaging Service";          port = "3002" }
+    @{ container = "ctm-frontend";   label = "M1  Frontend (Next.js 15)";      port = "3000" }
 )
 
 Write-Host ""
-Write-Host ("  {0,-40} {1,-10} {2}" -f "Service", "Port", "Status") -ForegroundColor White
-Write-Host ("  {0,-40} {1,-10} {2}" -f ("─"*38), ("─"*8), ("─"*10)) -ForegroundColor DarkGray
+Write-Host ("  {0,-42} {1,-8} {2}" -f "Service", "Port", "Status") -ForegroundColor White
+Write-Host ("  {0,-42} {1,-8} {2}" -f ("-" * 40), ("-" * 6), ("-" * 12)) -ForegroundColor DarkGray
 
 foreach ($svc in $allContainers) {
-    $state = docker inspect --format "{{.State.Status}}" $svc.container 2>$null
+    $state  = docker inspect --format "{{.State.Status}}" $svc.container 2>$null
     $health = docker inspect --format "{{if .State.Health}}{{.State.Health.Status}}{{else}}n/a{{end}}" $svc.container 2>$null
 
-    $statusText = if ($state -eq "running") {
-        if ($health -eq "healthy")  { "running ✓" }
-        elseif ($health -eq "n/a")  { "running" }
-        else                        { "running ($health)" }
-    } elseif ($state) { $state }
-    else { "not found" }
+    # Build status text without multi-line if-expression (PS 5.1 compatible)
+    if ($state -eq "running") {
+        if ($health -eq "healthy") {
+            $statusText = "running [OK]"
+        } elseif ($health -eq "n/a") {
+            $statusText = "running"
+        } else {
+            $statusText = "running ($health)"
+        }
+        $color = "Green"
+    } elseif ($state) {
+        $statusText = $state
+        $color = "Red"
+    } else {
+        $statusText = "not found"
+        $color = "Red"
+    }
 
-    $color = if ($state -eq "running") { "Green" } else { "Red" }
-    Write-Host ("  {0,-40} {1,-10} {2}" -f $svc.label, $svc.port, $statusText) -ForegroundColor $color
+    Write-Host ("  {0,-42} {1,-8} {2}" -f $svc.label, $svc.port, $statusText) -ForegroundColor $color
 }
 
 Write-Host ""
 Write-Divider
 
-# ─── Done ─────────────────────────────────────────────────────────────────────
+# ============================================================
+# Done
+# ============================================================
 Write-Host ""
-Write-Host "  ╔══════════════════════════════════════════════════════════╗" -ForegroundColor Green
-Write-Host "  ║              CTM Platform is running!                   ║" -ForegroundColor Green
-Write-Host "  ╚══════════════════════════════════════════════════════════╝" -ForegroundColor Green
+Write-Host "  ================================================================" -ForegroundColor Green
+Write-Host "  |              CTM Platform is running!                       |" -ForegroundColor Green
+Write-Host "  ================================================================" -ForegroundColor Green
 Write-Host ""
 Write-Host "  Access points:" -ForegroundColor White
-Write-Host "    Frontend     →  http://localhost:3000" -ForegroundColor Cyan
-Write-Host "    API Gateway  →  http://localhost:3001/v1/docs  (Swagger)" -ForegroundColor Cyan
-Write-Host "    Keycloak     →  http://localhost:8080  (admin / admin123)" -ForegroundColor Cyan
-Write-Host "    Kafka UI     →  http://localhost:8090" -ForegroundColor Cyan
-Write-Host "    MinIO        →  http://localhost:9001  (ctm_admin / ctm_minio_pass)" -ForegroundColor Cyan
-Write-Host "    AI Service   →  http://localhost:8001/docs  (FastAPI)" -ForegroundColor Cyan
+Write-Host "    Frontend    -> http://localhost:3000" -ForegroundColor Cyan
+Write-Host "    API Docs    -> http://localhost:3001/v1/docs  (Swagger)" -ForegroundColor Cyan
+Write-Host "    Keycloak    -> http://localhost:8080  (admin / admin123)" -ForegroundColor Cyan
+Write-Host "    Kafka UI    -> http://localhost:8090" -ForegroundColor Cyan
+Write-Host "    MinIO       -> http://localhost:9001  (ctm_admin / ctm_minio_pass)" -ForegroundColor Cyan
+Write-Host "    AI Service  -> http://localhost:8001/docs  (FastAPI)" -ForegroundColor Cyan
 Write-Host ""
 Write-Host "  Demo login:  demo@ctm.app / demo123" -ForegroundColor Yellow
 Write-Host "  Admin login: admin@ctm.app / admin123" -ForegroundColor Yellow
