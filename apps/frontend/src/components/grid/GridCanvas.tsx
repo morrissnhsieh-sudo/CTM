@@ -6,6 +6,8 @@ import { useGridStore, getColWidth, getRowHeight, getCellKey } from '../../store
 import { useUserStore, presenceColor } from '../../store/userStore'
 import { useCollabProvider } from '../../hooks/useCollabProvider'
 import { CellEditor } from './CellEditor'
+import { useUIStore } from '../../store/uiStore'
+import { SpecialViews } from './SpecialViews'
 
 // ─── Constants ───────────────────────────────────────────────────────────────
 const HEADER_HEIGHT = 32
@@ -404,50 +406,58 @@ export function GridCanvas({ sheetId, columns = [], rowCount = 1000 }: GridCanva
     dirtyRef.current = true
   }, [store])
 
+  const { viewMode } = useUIStore()
+
   return (
-    <div ref={containerRef} className="relative w-full h-full overflow-hidden" tabIndex={0} onKeyDown={handleKeyDown}>
-      <canvas
-        ref={canvasRef}
-        className="grid-canvas absolute inset-0"
-        onMouseDown={handleMouseDown}
-        onWheel={handleWheel}
-      />
-      {store.isEditing && store.activeCell && (
-        <CellEditor
-          row={store.activeCell.row}
-          col={store.activeCell.col}
-          initialValue={store.editValue}
-          x={getX(store.activeCell.col)}
-          y={getY(store.activeCell.row)}
-          width={store.colWidths.get(store.activeCell.col) ?? DEFAULT_COL_WIDTH}
-          height={store.rowHeights.get(store.activeCell.row) ?? DEFAULT_ROW_HEIGHT}
-          onCommit={(value, reason) => {
-            const key = getCellKey(store.activeCell!.row, store.activeCell!.col)
-            if (doc) {
-              const cellsMap = doc.getMap<Y.Map<unknown>>('cells')
-              doc.transact(() => {
-                let cellMap = cellsMap.get(key)
-                if (!cellMap) {
-                  cellMap = new Y.Map()
-                  cellsMap.set(key, cellMap)
+    <div ref={containerRef} className="relative w-full h-full overflow-hidden bg-background" tabIndex={0} onKeyDown={handleKeyDown}>
+      {viewMode === 'grid' ? (
+        <>
+          <canvas
+            ref={canvasRef}
+            className="grid-canvas absolute inset-0"
+            onMouseDown={handleMouseDown}
+            onWheel={handleWheel}
+          />
+          {store.isEditing && store.activeCell && (
+            <CellEditor
+              row={store.activeCell.row}
+              col={store.activeCell.col}
+              initialValue={store.editValue}
+              x={getX(store.activeCell.col)}
+              y={getY(store.activeCell.row)}
+              width={store.colWidths.get(store.activeCell.col) ?? DEFAULT_COL_WIDTH}
+              height={store.rowHeights.get(store.activeCell.row) ?? DEFAULT_ROW_HEIGHT}
+              onCommit={(value, reason) => {
+                const key = getCellKey(store.activeCell!.row, store.activeCell!.col)
+                if (doc) {
+                  const cellsMap = doc.getMap<Y.Map<unknown>>('cells')
+                  doc.transact(() => {
+                    let cellMap = cellsMap.get(key)
+                    if (!cellMap) {
+                      cellMap = new Y.Map()
+                      cellsMap.set(key, cellMap)
+                    }
+                    cellMap.set('value', value)
+                  })
                 }
-                cellMap.set('value', value)
-              })
-            }
-            store.setCellCache(key, value)
-            store.stopEditing(true)
-            dirtyRef.current = true
-            if (reason === 'keyboard') {
-              containerRef.current?.focus()
-            }
-          }}
-          onCancel={(reason) => {
-            store.stopEditing(false)
-            if (reason === 'keyboard') {
-              containerRef.current?.focus()
-            }
-          }}
-        />
+                store.setCellCache(key, value)
+                store.stopEditing(true)
+                dirtyRef.current = true
+                if (reason === 'keyboard') {
+                  containerRef.current?.focus()
+                }
+              }}
+              onCancel={(reason) => {
+                store.stopEditing(false)
+                if (reason === 'keyboard') {
+                  containerRef.current?.focus()
+                }
+              }}
+            />
+          )}
+        </>
+      ) : (
+        <SpecialViews sheetId={sheetId} doc={doc} columns={columns} />
       )}
     </div>
   )
