@@ -2,7 +2,7 @@
 
 import { useState, useRef, useEffect, useCallback } from 'react'
 import { Send, Sparkles, X, ChevronDown } from 'lucide-react'
-import { useSession } from 'next-auth/react'
+import { useAuthStore } from '@/store/authStore'
 import { cn } from '../../lib/utils'
 
 type AiMode = 'ask' | 'analyze' | 'generate' | 'automate'
@@ -29,7 +29,7 @@ const MODES: { mode: AiMode; label: string; description: string }[] = [
 ]
 
 export function AiPanel({ sheetId, onClose }: AiPanelProps) {
-  const { data: session } = useSession()
+  const { accessToken, user } = useAuthStore()
   const [mode, setMode] = useState<AiMode>('ask')
   const [messages, setMessages] = useState<Message[]>([])
   const [input, setInput] = useState('')
@@ -54,8 +54,8 @@ export function AiPanel({ sheetId, onClose }: AiPanelProps) {
     setInput('')
     setLoading(true)
 
-    const accessToken = (session as Record<string, unknown>)?.['accessToken'] as string
-    const workspaceId = (session as Record<string, unknown>)?.['workspaceId'] as string
+    const token = accessToken ?? ''
+    const workspaceId = user?.workspaceId ?? ''
 
     const apiUrl = process.env['NEXT_PUBLIC_API_URL'] ?? 'http://localhost:3001'
     const endpoint = mode === 'generate' ? `${apiUrl}/v1/ai/formula` : `${apiUrl}/v1/ai/query`
@@ -71,7 +71,7 @@ export function AiPanel({ sheetId, onClose }: AiPanelProps) {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
-            'Authorization': `Bearer ${accessToken}`,
+            'Authorization': `Bearer ${token}`,
             'X-Workspace-Id': workspaceId ?? '',
           },
           body: JSON.stringify(body),
@@ -96,7 +96,7 @@ export function AiPanel({ sheetId, onClose }: AiPanelProps) {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
-            'Authorization': `Bearer ${accessToken}`,
+            'Authorization': `Bearer ${token}`,
             'X-Workspace-Id': workspaceId ?? '',
           },
           body: JSON.stringify(body),
@@ -142,7 +142,7 @@ export function AiPanel({ sheetId, onClose }: AiPanelProps) {
     } finally {
       setLoading(false)
     }
-  }, [input, loading, mode, sheetId, session])
+  }, [input, loading, mode, sheetId, accessToken, user])
 
   return (
     <div className="flex flex-col h-full bg-background">

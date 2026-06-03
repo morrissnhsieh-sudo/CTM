@@ -4,7 +4,7 @@ import { useEffect, useRef, useState } from 'react'
 import * as Y from 'yjs'
 import { HocuspocusProvider } from '@hocuspocus/provider'
 import { IndexeddbPersistence } from 'y-indexeddb'
-import { useSession } from 'next-auth/react'
+import { useAuthStore } from '../store/authStore'
 import { useGridStore } from '../store/gridStore'
 import { useUserStore } from '../store/userStore'
 import { presenceColor } from '../store/userStore'
@@ -12,7 +12,7 @@ import { presenceColor } from '../store/userStore'
 const COLLAB_URL = process.env['NEXT_PUBLIC_COLLAB_URL'] ?? 'ws://localhost:1234'
 
 export function useCollabProvider(sheetId: string) {
-  const { data: session } = useSession()
+  const { user, accessToken } = useAuthStore()
   const docRef = useRef<Y.Doc>(new Y.Doc({ guid: sheetId }))
   const providerRef = useRef<HocuspocusProvider | null>(null)
   const [connected, setConnected] = useState(false)
@@ -20,15 +20,12 @@ export function useCollabProvider(sheetId: string) {
   const { setCollaborator, removeCollaborator, userId } = useUserStore()
 
   useEffect(() => {
-    if (!session) return
+    if (!user || !accessToken) return
 
     const doc = docRef.current
 
     // IndexedDB for offline support
     const idb = new IndexeddbPersistence(`ctm-sheet-${sheetId}`, doc)
-
-    const accessToken = (session as Record<string, unknown>)['accessToken'] as string | undefined
-    if (!accessToken) return
 
     const provider = new HocuspocusProvider({
       url: `${COLLAB_URL}/doc/${sheetId}`,
@@ -74,21 +71,84 @@ export function useCollabProvider(sheetId: string) {
         if (activeCell && provider.awareness) {
           provider.awareness.setLocalStateField('cursor', activeCell)
           provider.awareness.setLocalStateField('userId', userId)
-          provider.awareness.setLocalStateField('name', session.user?.name ?? userId ?? '')
+          provider.awareness.setLocalStateField('name', user?.name ?? userId ?? '')
         }
       },
     )
 
     // Sync Y.Doc cell changes back to gridStore
     const cellsMap = doc.getMap<Y.Map<unknown>>('cells')
-    const observer = () => {
-      cellsMap.forEach((cell, cellRef) => {
-        const value = cell.get('value')
-        if (value != null) {
-          gridStore.setCellCache(cellRef, value as import('@ctm/shared-types').CellValue)
+    const undoManager = new Y.UndoManager(cellsMap)
+
+    const applyFormat = (format: Partial<import('@ctm/shared-types').CellFormat>) => {
+      const selection = useGridStore.getState().selection
+      if (!selection) return
+      const startRow = Math.min(selection.startRow, selection.endRow)
+      const endRow = Math.max(selection.startRow, selection.endRow)
+      const startCol = Math.min(selection.startCol, selection.endCol)
+      const endCol = Math.max(selection.startCol, selection.endCol)
+
+      doc.transact(() => {
+        for (let r = startRow; r <= endRow; r++) {
+          for (let c = startCol; c <= endCol; c++) {
+            const key = `r${r}c${c}`
+            let cellMap = cellsMap.get(key)
+            if (!cellMap) {
+              cellMap = new Y.Map()
+              cellsMap.set(key, cellMap)
+            }
+            const existing = (cellMap.get('format') || {}) as Record<string, unknown>
+            cellMap.set('format', { ...existing, ...format })
+          }
+        }
+      })
+
+      // Update locally immediately
+      const m = new Map(useGridStore.getState().formatCache)
+      for (let r = startRow; r <= endRow; r++) {
+        for (let c = startCol; c <= endCol; c++) {
+          const key = `r${r}c${c}`
+          const existing = m.get(key) ?? {}
+          m.set(key, { ...existing, ...format })
+        }
+      }
+      useGridStore.setState({ formatCache: m })
+    }
+
+    useGridStore.setState({
+      undo: () => undoManager.undo(),
+      redo: () => undoManager.redo(),
+      applyFormat,
+    })
+
+    const observer = (event: Y.YMapEvent<Y.Map<unknown>>) => {
+      event.keysChanged.forEach((key) => {
+        const cell = cellsMap.get(key)
+        if (cell) {
+          const value = cell.get('value')
+          if (value !== undefined) {
+            gridStore.setCellCache(key, value as import('@ctm/shared-types').CellValue)
+          }
+          const format = cell.get('format')
+          if (format !== undefined) {
+            gridStore.setFormatCache(key, format as Partial<import('@ctm/shared-types').CellFormat>)
+          }
         }
       })
     }
+
+    // Initial load
+    cellsMap.forEach((cell, cellRef) => {
+      const value = cell.get('value')
+      if (value !== undefined) {
+        gridStore.setCellCache(cellRef, value as import('@ctm/shared-types').CellValue)
+      }
+      const format = cell.get('format')
+      if (format !== undefined) {
+        gridStore.setFormatCache(cellRef, format as Partial<import('@ctm/shared-types').CellFormat>)
+      }
+    })
+
     cellsMap.observe(observer)
 
     providerRef.current = provider
@@ -99,8 +159,32 @@ export function useCollabProvider(sheetId: string) {
       provider.destroy()
       idb.destroy()
       setConnected(false)
+      // Restore default local actions
+      useGridStore.setState({
+        undo: () => {},
+        redo: () => {},
+        applyFormat: (format: Partial<import('@ctm/shared-types').CellFormat>) => {
+          const state = useGridStore.getState()
+          const selection = state.selection
+          if (!selection) return
+          const m = new Map(state.formatCache)
+          const startRow = Math.min(selection.startRow, selection.endRow)
+          const endRow = Math.max(selection.startRow, selection.endRow)
+          const startCol = Math.min(selection.startCol, selection.endCol)
+          const endCol = Math.max(selection.startCol, selection.endCol)
+
+          for (let r = startRow; r <= endRow; r++) {
+            for (let c = startCol; c <= endCol; c++) {
+              const key = `r${r}c${c}`
+              const existing = m.get(key) ?? {}
+              m.set(key, { ...existing, ...format })
+            }
+          }
+          useGridStore.setState({ formatCache: m })
+        }
+      })
     }
-  }, [sheetId, session?.user])
+  }, [sheetId, user, accessToken])
 
   return {
     doc: docRef.current,

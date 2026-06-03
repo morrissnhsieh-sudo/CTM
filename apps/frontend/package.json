@@ -12,9 +12,9 @@
   "dependencies": {
     "@ctm/shared-types": "workspace:*",
     "next": "15.3.0",
+    "next-auth": "5.0.0-beta.25",
     "react": "^18.3.0",
     "react-dom": "^18.3.0",
-    "next-auth": "^5.0.0-beta.25",
     "yjs": "^13.6.21",
     "@hocuspocus/provider": "^2.13.0",
     "y-indexeddb": "^9.0.12",

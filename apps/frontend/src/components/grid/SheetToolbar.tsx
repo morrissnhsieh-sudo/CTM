@@ -6,12 +6,19 @@ import { useUIStore } from '../../store/uiStore'
 import { cn } from '../../lib/utils'
 
 export function SheetToolbar() {
-  const { activeCell, selection } = useGridStore()
+  const { activeCell, selection, applyFormat, undo, redo, formatCache } = useGridStore()
   const { toggleRightPanel, rightPanelOpen } = useUIStore()
 
   const cellRef = activeCell
     ? `${String.fromCharCode(65 + activeCell.col)}${activeCell.row + 1}`
     : ''
+
+  const activeKey = activeCell ? `r${activeCell.row}c${activeCell.col}` : ''
+  const activeFormat = activeKey ? formatCache.get(activeKey) || {} : {}
+
+  const isBold = !!activeFormat.bold
+  const isItalic = !!activeFormat.italic
+  const textAlign = activeFormat.textAlign || 'left'
 
   return (
     <div className="h-10 border-b border-border bg-card flex items-center gap-1 px-2 flex-shrink-0">
@@ -23,21 +30,46 @@ export function SheetToolbar() {
       <div className="w-px h-6 bg-border mx-1" />
 
       {/* Undo/Redo */}
-      <ToolbarButton icon={<Undo2 size={14} />} title="Undo (⌘Z)" />
-      <ToolbarButton icon={<Redo2 size={14} />} title="Redo (⌘Y)" />
+      <ToolbarButton icon={<Undo2 size={14} />} title="Undo (⌘Z)" onClick={undo} />
+      <ToolbarButton icon={<Redo2 size={14} />} title="Redo (⌘Y)" onClick={redo} />
 
       <div className="w-px h-6 bg-border mx-1" />
 
       {/* Format */}
-      <ToolbarButton icon={<Bold size={14} />} title="Bold (⌘B)" />
-      <ToolbarButton icon={<Italic size={14} />} title="Italic (⌘I)" />
+      <ToolbarButton
+        icon={<Bold size={14} />}
+        title="Bold (⌘B)"
+        active={isBold}
+        onClick={() => applyFormat({ bold: !isBold })}
+      />
+      <ToolbarButton
+        icon={<Italic size={14} />}
+        title="Italic (⌘I)"
+        active={isItalic}
+        onClick={() => applyFormat({ italic: !isItalic })}
+      />
 
       <div className="w-px h-6 bg-border mx-1" />
 
       {/* Alignment */}
-      <ToolbarButton icon={<AlignLeft size={14} />} title="Align left" />
-      <ToolbarButton icon={<AlignCenter size={14} />} title="Align center" />
-      <ToolbarButton icon={<AlignRight size={14} />} title="Align right" />
+      <ToolbarButton
+        icon={<AlignLeft size={14} />}
+        title="Align left"
+        active={textAlign === 'left'}
+        onClick={() => applyFormat({ textAlign: 'left' })}
+      />
+      <ToolbarButton
+        icon={<AlignCenter size={14} />}
+        title="Align center"
+        active={textAlign === 'center'}
+        onClick={() => applyFormat({ textAlign: 'center' })}
+      />
+      <ToolbarButton
+        icon={<AlignRight size={14} />}
+        title="Align right"
+        active={textAlign === 'right'}
+        onClick={() => applyFormat({ textAlign: 'right' })}
+      />
 
       <div className="w-px h-6 bg-border mx-1" />
 
@@ -66,13 +98,24 @@ export function SheetToolbar() {
   )
 }
 
-function ToolbarButton({ icon, title, active }: { icon: React.ReactNode; title: string; active?: boolean }) {
+function ToolbarButton({
+  icon,
+  title,
+  active,
+  onClick,
+}: {
+  icon: React.ReactNode
+  title: string
+  active?: boolean
+  onClick?: () => void
+}) {
   return (
     <button
       title={title}
+      onClick={onClick}
       className={cn(
         'h-7 w-7 rounded flex items-center justify-center transition-colors',
-        active ? 'bg-accent text-accent-foreground' : 'text-muted-foreground hover:bg-accent',
+        active ? 'bg-accent text-accent-foreground font-semibold border border-border' : 'text-muted-foreground hover:bg-accent',
       )}
     >
       {icon}

@@ -13,12 +13,16 @@ export const aiRouter: FastifyPluginAsync = async (app) => {
       dataConsent: z.boolean().default(false),
     }).parse(request.body)
 
+    const origin = request.headers.origin ?? 'http://localhost:3000'
+
     // Proxy to M6 AI service with SSE forwarding
     reply.raw.writeHead(200, {
       'Content-Type': 'text/event-stream',
       'Cache-Control': 'no-cache',
       'Connection': 'keep-alive',
       'X-Accel-Buffering': 'no',
+      'Access-Control-Allow-Origin': origin,
+      'Access-Control-Allow-Credentials': 'true',
     })
 
     try {
@@ -92,10 +96,14 @@ export const aiRouter: FastifyPluginAsync = async (app) => {
       prompt: z.string().min(1).max(5000),
     }).parse(request.body)
 
+    const origin = request.headers.origin ?? 'http://localhost:3000'
+
     reply.raw.writeHead(200, {
       'Content-Type': 'text/event-stream',
       'Cache-Control': 'no-cache',
       'Connection': 'keep-alive',
+      'Access-Control-Allow-Origin': origin,
+      'Access-Control-Allow-Credentials': 'true',
     })
 
     try {

@@ -47,11 +47,44 @@ Write-Host ""
 # ============================================================
 Write-Header "Step 1 - Pre-flight checks"
 
+$dockerDesktopPath = "C:\Program Files\Docker\Docker\Docker Desktop.exe"
+$dockerRunning = $false
+
 try {
     $dockerVer = docker version --format "{{.Server.Version}}" 2>$null
-    if (-not $dockerVer) { throw "Docker not running" }
-    Write-Ok "Docker Engine $dockerVer"
-} catch {
+    if ($dockerVer) {
+        $dockerRunning = $true
+        Write-Ok "Docker Engine $dockerVer"
+    }
+} catch {}
+
+if (-not $dockerRunning) {
+    if (Test-Path $dockerDesktopPath) {
+        Write-Step "Docker is not running. Attempting to start Docker Desktop..."
+        Start-Process $dockerDesktopPath
+        
+        $timeout = 90
+        $elapsed = 0
+        $interval = 5
+        
+        while ($elapsed -lt $timeout) {
+            try {
+                $dockerVer = docker version --format "{{.Server.Version}}" 2>$null
+                if ($dockerVer) {
+                    $dockerRunning = $true
+                    Write-Ok "Docker Engine $dockerVer started successfully!"
+                    break
+                }
+            } catch {}
+            
+            Start-Sleep $interval
+            $elapsed += $interval
+            Write-Host "    [$elapsed s] waiting for Docker to initialize..." -ForegroundColor DarkGray
+        }
+    }
+}
+
+if (-not $dockerRunning) {
     Write-Fail "Docker is not running or not installed."
     Write-Warn "Start Docker Desktop and re-run this script."
     exit 1
@@ -131,6 +164,21 @@ if ($LASTEXITCODE -ne 0) {
 }
 
 docker compose up -d kafka-ui 2>$null
+
+Write-Step "Waiting for MinIO to be healthy before initialising buckets..."
+$minioTimeout = 60
+$minioElapsed = 0
+$minioReady = $false
+while ($minioElapsed -lt $minioTimeout) {
+    $minioHealth = docker inspect --format "{{.State.Health.Status}}" ctm-minio 2>$null
+    if ($minioHealth -eq "healthy") { $minioReady = $true; break }
+    Start-Sleep 3
+    $minioElapsed += 3
+    Write-Host "    [${minioElapsed}s] MinIO status: $minioHealth" -ForegroundColor DarkGray
+}
+if (-not $minioReady) {
+    Write-Warn "MinIO did not become healthy in ${minioTimeout}s - bucket init may fail"
+}
 
 Write-Step "Initialising MinIO buckets..."
 docker compose up minio-init 2>$null | Out-Null

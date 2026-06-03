@@ -1,6 +1,13 @@
+if (typeof globalThis !== 'undefined' && 'localStorage' in globalThis) {
+  try {
+    delete (globalThis as any).localStorage
+  } catch (e) {}
+}
+
 import type { NextConfig } from 'next'
 
 const nextConfig: NextConfig = {
+  devIndicators: false,
   images: {
     remotePatterns: [
       { protocol: 'https', hostname: '**.ctm.app' },

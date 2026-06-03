@@ -25,15 +25,15 @@ class Settings(BaseSettings):
     # Google Vertex AI (primary — service account JSON)
     GOOGLE_APPLICATION_CREDENTIALS: str = ""   # path to service account JSON
     VERTEX_PROJECT_ID: str = "d-sxd110x-ssd1-aaos"
-    VERTEX_REGION: str = "us-east5"            # Vertex AI region for Claude
-    # Claude model IDs on Vertex AI
-    VERTEX_MODEL_PRIMARY: str = "claude-sonnet-4-5@20241022"
-    VERTEX_MODEL_AGENT: str = "claude-opus-4-5@20240801"
+    VERTEX_REGION: str = "us-central1"            # Vertex AI region for Claude
+    # Gemini & Claude model IDs on Vertex AI
+    VERTEX_MODEL_PRIMARY: str = "gemini-2.5-flash"
+    VERTEX_MODEL_AGENT: str = "claude-3-opus@20240229"
 
     # Anthropic direct API (fallback / alternative)
     ANTHROPIC_API_KEY: str = ""
-    ANTHROPIC_MODEL_PRIMARY: str = "claude-sonnet-4-5"
-    ANTHROPIC_MODEL_AGENT: str = "claude-opus-4-5"
+    ANTHROPIC_MODEL_PRIMARY: str = "claude-3-5-sonnet-20241022"
+    ANTHROPIC_MODEL_AGENT: str = "claude-3-opus-20240229"
 
     # OpenAI (second fallback)
     OPENAI_API_KEY: str = ""

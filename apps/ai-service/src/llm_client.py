@@ -54,9 +54,118 @@ def _load_vertex_credentials() -> tuple[str, str] | None:
         return None
 
 
-def get_async_client() -> AnthropicClientType:
+class UnifiedAsyncClient:
+    def __init__(self, anthropic_client, project_id: str | None = None, region: str | None = None):
+        self.anthropic_client = anthropic_client
+        self.project_id = project_id
+        self.region = region
+        self.messages = UnifiedMessages(anthropic_client, project_id, region)
+
+
+class UnifiedMessages:
+    def __init__(self, anthropic_client, project_id: str | None = None, region: str | None = None):
+        self.anthropic_client = anthropic_client
+        self.project_id = project_id
+        self.region = region
+
+    def stream(self, model: str, max_tokens: int, system: str, messages: list[dict]):
+        if "gemini" in model.lower():
+            return GeminiStreamContext(model, max_tokens, system, messages, self.project_id, self.region)
+        else:
+            return self.anthropic_client.messages.stream(
+                model=model,
+                max_tokens=max_tokens,
+                system=system,
+                messages=messages
+            )
+
+    async def create(self, model: str, max_tokens: int, system: str, messages: list[dict]):
+        if "gemini" in model.lower():
+            import vertexai
+            from vertexai.generative_models import GenerativeModel, GenerationConfig
+            vertexai.init(project=self.project_id, location=self.region)
+            
+            gemini_model = GenerativeModel(
+                model,
+                system_instruction=system
+            )
+            user_prompt = messages[-1]["content"] if messages else ""
+            config = GenerationConfig(max_output_tokens=max_tokens)
+            
+            response = await gemini_model.generate_content_async(
+                user_prompt,
+                generation_config=config
+            )
+            
+            class Content:
+                def __init__(self, text):
+                    self.text = text
+                    
+            class Response:
+                def __init__(self, text):
+                    self.content = [Content(text)]
+                    
+            return Response(response.text)
+        else:
+            return await self.anthropic_client.messages.create(
+                model=model,
+                max_tokens=max_tokens,
+                system=system,
+                messages=messages
+            )
+
+
+class GeminiStreamContext:
+    def __init__(self, model, max_tokens, system, messages, project_id, region):
+        self.model = model
+        self.max_tokens = max_tokens
+        self.system = system
+        self.messages = messages
+        self.project_id = project_id
+        self.region = region
+
+    async def __aenter__(self):
+        import vertexai
+        from vertexai.generative_models import GenerativeModel, GenerationConfig
+        vertexai.init(project=self.project_id, location=self.region)
+        
+        gemini_model = GenerativeModel(
+            self.model,
+            system_instruction=self.system
+        )
+        user_prompt = self.messages[-1]["content"] if self.messages else ""
+        config = GenerationConfig(max_output_tokens=self.max_tokens)
+        
+        self.response_stream = await gemini_model.generate_content_async(
+            user_prompt,
+            generation_config=config,
+            stream=True
+        )
+        
+        class TextStream:
+            def __init__(self, stream):
+                self.stream = stream
+            def __aiter__(self):
+                return self
+            async def __anext__(self):
+                try:
+                    chunk = await self.stream.__anext__()
+                    return chunk.text
+                except StopAsyncIteration:
+                    raise StopAsyncIteration
+                except Exception:
+                    raise StopAsyncIteration
+        
+        self.text_stream = TextStream(self.response_stream)
+        return self
+
+    async def __aexit__(self, exc_type, exc_val, exc_tb):
+        pass
+
+
+def get_async_client() -> UnifiedAsyncClient:
     """
-    Return an async Anthropic client for the configured LLM provider.
+    Return a unified async client that routes to Gemini or Anthropic.
     """
     provider = settings.LLM_PROVIDER.lower()
 
@@ -72,14 +181,15 @@ def get_async_client() -> AnthropicClientType:
                 project_id=project_id,
                 region=region,
             )
-            log.info("Using AnthropicVertex client", project=project_id, region=region)
-            return client
+            log.info("Using AnthropicVertex client wrapped in UnifiedAsyncClient", project=project_id, region=region)
+            return UnifiedAsyncClient(client, project_id, region)
 
     # ── Direct Anthropic ───────────────────────────────────────
     if settings.ANTHROPIC_API_KEY:
         import anthropic
-        log.info("Using Anthropic direct client")
-        return anthropic.AsyncAnthropic(api_key=settings.ANTHROPIC_API_KEY)
+        log.info("Using Anthropic direct client wrapped in UnifiedAsyncClient")
+        client = anthropic.AsyncAnthropic(api_key=settings.ANTHROPIC_API_KEY)
+        return UnifiedAsyncClient(client)
 
     raise RuntimeError(
         "No LLM credentials configured. "

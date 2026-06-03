@@ -51,7 +51,7 @@ export const authRouter: FastifyPluginAsync = async (app) => {
       return reply.code(401).send({ error: { code: 'UNAUTHORIZED', message: 'Invalid credentials', requestId: request.id } })
     }
 
-    const token = signToken({
+    const token = await signToken({
       id: user.id,
       workspaceId: user.workspaceId,
       role: user.role,
@@ -116,7 +116,7 @@ export const authRouter: FastifyPluginAsync = async (app) => {
       return createdWorkspace
     })
 
-    const token = signToken({
+    const token = await signToken({
       id: userId,
       workspaceId,
       role: 'OWNER',

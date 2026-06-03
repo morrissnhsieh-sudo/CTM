@@ -3,7 +3,10 @@
  * Wraps fetch with auth headers, error handling, and TypeScript generics.
  */
 
-const API_URL = process.env['NEXT_PUBLIC_API_URL'] ?? 'http://localhost:3001'
+const isServer = typeof window === 'undefined'
+const API_URL = isServer
+  ? (process.env['AUTH_API_BASE'] ?? 'http://api-service:3001')
+  : (process.env['NEXT_PUBLIC_API_URL'] ?? 'http://localhost:3001')
 
 export class ApiError extends Error {
   constructor(

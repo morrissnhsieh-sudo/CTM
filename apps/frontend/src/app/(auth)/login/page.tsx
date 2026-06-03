@@ -1,5 +1,5 @@
 import { redirect } from 'next/navigation'
-import { auth } from '../../api/auth/[...nextauth]/auth'
+import { getSession } from '@/lib/session'
 import LoginButton from '@/components/auth/LoginButton'
 
 export default async function LoginPage({
@@ -7,11 +7,18 @@ export default async function LoginPage({
 }: {
   searchParams: Promise<{ callbackUrl?: string; error?: string }>
 }) {
-  const session = await auth()
+  const session = await getSession()
   const params = await searchParams
 
-  if (session?.user) {
-    redirect(params.callbackUrl ?? '/')
+  console.log('[LoginPage] session present:', !!session, 'callbackUrl:', params.callbackUrl)
+
+  // Already logged in — send to the callback or their workspace
+  if (session) {
+    const dest = params.callbackUrl && params.callbackUrl !== '/'
+      ? params.callbackUrl
+      : `/${session.user.workspaceId}`
+    console.log('[LoginPage] redirecting to:', dest)
+    redirect(dest)
   }
 
   return (

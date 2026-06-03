@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useRef } from 'react'
+import { useEffect, useRef, useState } from 'react'
 
 interface CellEditorProps {
   row: number
@@ -10,8 +10,8 @@ interface CellEditorProps {
   y: number
   width: number
   height: number
-  onCommit: (value: string) => void
-  onCancel: () => void
+  onCommit: (value: string, reason: 'keyboard' | 'blur') => void
+  onCancel: (reason: 'keyboard') => void
 }
 
 /**
@@ -20,14 +20,37 @@ interface CellEditorProps {
  */
 export function CellEditor({ row, col, initialValue, x, y, width, height, onCommit, onCancel }: CellEditorProps) {
   const ref = useRef<HTMLTextAreaElement>(null)
+  const [value, setValue] = useState(initialValue)
+  const isFirstChangeRef = useRef(true)
 
   useEffect(() => {
     const el = ref.current
     if (!el) return
-    el.focus()
-    // Place cursor at end
-    el.setSelectionRange(el.value.length, el.value.length)
+    const timer = setTimeout(() => {
+      el.focus()
+      // Place cursor at end
+      el.setSelectionRange(el.value.length, el.value.length)
+    }, 0)
+    return () => clearTimeout(timer)
   }, [])
+
+  // Clear first-change check window after 50ms
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      isFirstChangeRef.current = false
+    }, 50)
+    return () => clearTimeout(timer)
+  }, [])
+
+  const handleChange = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
+    let newVal = e.target.value
+    // Deduplicate automatically inserted duplicate character on mount/focus
+    if (isFirstChangeRef.current && initialValue && newVal === initialValue + initialValue) {
+      newVal = initialValue
+    }
+    isFirstChangeRef.current = false
+    setValue(newVal)
+  }
 
   return (
     <textarea
@@ -35,13 +58,14 @@ export function CellEditor({ row, col, initialValue, x, y, width, height, onComm
       className="absolute z-10 border-2 border-blue-500 bg-white dark:bg-gray-900 text-gray-900 dark:text-gray-100
                  text-[13px] font-sans resize-none outline-none overflow-hidden leading-5 px-1.5 py-0.5"
       style={{ left: x, top: y, width: Math.max(width, 120), minHeight: height }}
-      defaultValue={initialValue}
+      value={value}
+      onChange={handleChange}
       onKeyDown={(e) => {
-        if (e.key === 'Escape') { e.preventDefault(); onCancel() }
-        if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); onCommit(e.currentTarget.value) }
-        if (e.key === 'Tab') { e.preventDefault(); onCommit(e.currentTarget.value) }
+        if (e.key === 'Escape') { e.preventDefault(); onCancel('keyboard') }
+        if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); onCommit(value, 'keyboard') }
+        if (e.key === 'Tab') { e.preventDefault(); onCommit(value, 'keyboard') }
       }}
-      onBlur={(e) => onCommit(e.currentTarget.value)}
+      onBlur={() => onCommit(value, 'blur')}
     />
   )
 }

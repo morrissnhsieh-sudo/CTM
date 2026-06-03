@@ -1,6 +1,7 @@
 'use client'
 
 import { useEffect, useRef, useCallback, useState } from 'react'
+import * as Y from 'yjs'
 import { useGridStore, getColWidth, getRowHeight, getCellKey } from '../../store/gridStore'
 import { useUserStore, presenceColor } from '../../store/userStore'
 import { useCollabProvider } from '../../hooks/useCollabProvider'
@@ -193,16 +194,43 @@ export function GridCanvas({ sheetId, columns = [], rowCount = 1000 }: GridCanva
 
         const key = getCellKey(row, col)
         const val = store.cellCache.get(key)
+        const format = store.formatCache.get(key)
 
         if (val != null && val !== '') {
           // Truncate text to cell width
           const text = String(val)
           ctx.fillStyle = colors.cellText
-          ctx.fillText(text, x + 6, y + rowH / 2, colW - 12)
+
+          // Apply bold/italic
+          let fontStr = FONT
+          if (format?.bold && format?.italic) {
+            fontStr = 'bold italic 13px Inter, system-ui, sans-serif'
+          } else if (format?.bold) {
+            fontStr = 'bold 13px Inter, system-ui, sans-serif'
+          } else if (format?.italic) {
+            fontStr = 'italic 13px Inter, system-ui, sans-serif'
+          }
+          ctx.font = fontStr
+
+          // Apply alignment
+          const align = format?.textAlign || 'left'
+          ctx.textAlign = align
+
+          let textX = x + 6
+          if (align === 'center') {
+            textX = x + colW / 2
+          } else if (align === 'right') {
+            textX = x + colW - 6
+          }
+
+          ctx.fillText(text, textX, y + rowH / 2, colW - 12)
         }
       }
     }
 
+    // Restore context font and alignment settings
+    ctx.font = FONT
+    ctx.textAlign = 'left'
     ctx.restore()
 
     // ── Selection overlay ────────────────────────────────────
@@ -305,13 +333,30 @@ export function GridCanvas({ sheetId, columns = [], rowCount = 1000 }: GridCanva
       case 'Tab':        store.setActiveCell(activeCell.row, activeCell.col + 1); e.preventDefault(); break
       case 'F2':         store.startEditing(); e.preventDefault(); break
       case 'Delete':
-      case 'Backspace':  store.setCellCache(getCellKey(activeCell.row, activeCell.col), null); dirtyRef.current = true; break
+      case 'Backspace': {
+        const key = getCellKey(activeCell.row, activeCell.col)
+        if (doc) {
+          const cellsMap = doc.getMap<Y.Map<unknown>>('cells')
+          doc.transact(() => {
+            let cellMap = cellsMap.get(key)
+            if (!cellMap) {
+              cellMap = new Y.Map()
+              cellsMap.set(key, cellMap)
+            }
+            cellMap.set('value', null)
+          })
+        }
+        store.setCellCache(key, null)
+        dirtyRef.current = true
+        break
+      }
       default:
         if (e.key.length === 1 && !e.ctrlKey && !e.metaKey) {
           store.startEditing(e.key)
+          e.preventDefault()
         }
     }
-  }, [store])
+  }, [store, doc])
 
   // ─── Mouse ───────────────────────────────────────────────────
   const handleMouseDown = useCallback((e: React.MouseEvent<HTMLCanvasElement>) => {
@@ -376,12 +421,32 @@ export function GridCanvas({ sheetId, columns = [], rowCount = 1000 }: GridCanva
           y={getY(store.activeCell.row)}
           width={store.colWidths.get(store.activeCell.col) ?? DEFAULT_COL_WIDTH}
           height={store.rowHeights.get(store.activeCell.row) ?? DEFAULT_ROW_HEIGHT}
-          onCommit={(value) => {
-            store.setCellCache(getCellKey(store.activeCell!.row, store.activeCell!.col), value)
+          onCommit={(value, reason) => {
+            const key = getCellKey(store.activeCell!.row, store.activeCell!.col)
+            if (doc) {
+              const cellsMap = doc.getMap<Y.Map<unknown>>('cells')
+              doc.transact(() => {
+                let cellMap = cellsMap.get(key)
+                if (!cellMap) {
+                  cellMap = new Y.Map()
+                  cellsMap.set(key, cellMap)
+                }
+                cellMap.set('value', value)
+              })
+            }
+            store.setCellCache(key, value)
             store.stopEditing(true)
             dirtyRef.current = true
+            if (reason === 'keyboard') {
+              containerRef.current?.focus()
+            }
           }}
-          onCancel={() => store.stopEditing(false)}
+          onCancel={(reason) => {
+            store.stopEditing(false)
+            if (reason === 'keyboard') {
+              containerRef.current?.focus()
+            }
+          }}
         />
       )}
     </div>

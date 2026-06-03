@@ -1,4 +1,4 @@
-﻿
+
 # CTM Platform ??Full local development stack
 # Run: docker compose up -d
 # All 10 modules + dependencies in < 2 minutes.
@@ -221,9 +221,9 @@ services:
       LLM_PROVIDER: vertex
       GOOGLE_APPLICATION_CREDENTIALS: /run/secrets/vertex_key.json
       VERTEX_PROJECT_ID: d-sxd110x-ssd1-aaos
-      VERTEX_REGION: us-east5
-      VERTEX_MODEL_PRIMARY: claude-sonnet-4-5@20241022
-      VERTEX_MODEL_AGENT: claude-opus-4-5@20240801
+      VERTEX_REGION: us-central1
+      VERTEX_MODEL_PRIMARY: gemini-2.5-flash
+      VERTEX_MODEL_AGENT: claude-3-opus@20240229
       # ?? Fallback keys (optional) ?????????????????????????????
       ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
       OPENAI_API_KEY: ${OPENAI_API_KEY:-}
@@ -271,13 +271,18 @@ services:
       dockerfile: apps/frontend/Dockerfile
       target: development
     container_name: ctm-frontend
+    command: sh -c "pnpm install && pnpm --filter @ctm/frontend dev"
     environment:
       CI: "true"
       NEXT_PUBLIC_API_URL: http://localhost:3001
-      NEXT_PUBLIC_COLLAB_URL: ws://collab-service:1234
-      NEXT_PUBLIC_CHAT_URL: ws://messaging-service:3002
+      NEXT_PUBLIC_COLLAB_URL: ws://localhost:1234
+      NEXT_PUBLIC_CHAT_URL: ws://localhost:3002
       NEXTAUTH_URL: http://localhost:3000
       NEXTAUTH_SECRET: dev_nextauth_secret_32bytes_here
+      # NextAuth v5 uses AUTH_* env vars (NEXTAUTH_* are v4 legacy names)
+      AUTH_URL: http://localhost:3000
+      AUTH_SECRET: dev_nextauth_secret_32bytes_here
+      AUTH_TRUST_HOST: "true"
       AUTH_API_BASE: http://api-service:3001
     ports:
       - "3000:3000"
@@ -289,6 +294,11 @@ services:
       - .:/app
       - /app/node_modules
       - /app/apps/frontend/.next
+      - /app/apps/frontend/node_modules
+      - /app/apps/api-service/node_modules
+      - /app/apps/collab-service/node_modules
+      - /app/apps/messaging-service/node_modules
+      - /app/packages/shared-types/node_modules
     networks: [ctm-net]
 
 

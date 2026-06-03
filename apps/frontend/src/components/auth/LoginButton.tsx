@@ -1,7 +1,7 @@
 'use client'
 
 import { useState } from 'react'
-import { signIn } from 'next-auth/react'
+import { useAuthStore } from '@/store/authStore'
 
 interface LoginButtonProps {
   callbackUrl: string
@@ -13,6 +13,10 @@ export default function LoginButton({ callbackUrl }: LoginButtonProps) {
   const [password, setPassword] = useState('')
   const [name, setName] = useState('')
   const [error, setError] = useState<string | null>(null)
+  const [submitting, setSubmitting] = useState(false)
+
+  const { setAuth } = useAuthStore()
+
   const apiBase = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:3001'
 
   const handleSubmit = async (event: React.FormEvent<HTMLFormElement>) => {
@@ -24,33 +28,69 @@ export default function LoginButton({ callbackUrl }: LoginButtonProps) {
       return
     }
 
-    if (mode === 'register') {
-      const response = await fetch(`${apiBase}/v1/auth/register`, {
+    setSubmitting(true)
+
+    try {
+      // Register first if needed
+      if (mode === 'register') {
+        const response = await fetch(`${apiBase}/v1/auth/register`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ email, name, password }),
+        })
+
+        if (!response.ok) {
+          const body = await response.json().catch(() => null)
+          setError(body?.error?.message ?? 'Registration failed. Please try again.')
+          return
+        }
+      }
+
+      // POST to our own Next.js route which sets the httpOnly cookie
+      const res = await fetch('/api/auth/login', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ email, name, password }),
+        body: JSON.stringify({ email, password }),
       })
 
-      if (!response.ok) {
-        const body = await response.json().catch(() => null)
-        setError(body?.error?.message ?? 'Registration failed. Please try again.')
+      if (!res.ok) {
+        const body = await res.json().catch(() => null)
+        setError(body?.error ?? 'Authentication failed. Please check your credentials.')
         return
       }
+
+      const data = (await res.json()) as {
+        user: { id: string; email: string; name: string; role: string; workspaceId: string }
+      }
+
+      // Hydrate the auth store — accessToken is in the httpOnly cookie,
+      // we re-fetch it from /api/auth/me on the next load. For this session,
+      // fetch it immediately so in-page features work right away.
+      const meRes = await fetch('/api/auth/me')
+      let dest = callbackUrl
+      if (meRes.ok) {
+        const me = (await meRes.json()) as {
+          user: { id: string; email: string; name: string; role: string; workspaceId: string }
+          accessToken: string
+        }
+        setAuth(me.user, me.accessToken)
+        if (dest === '/') {
+          dest = `/${me.user.workspaceId}`
+        }
+      } else {
+        // Fallback — user info without access token (token is in cookie, API calls still work)
+        setAuth(data.user, '')
+        if (dest === '/') {
+          dest = `/${data.user.workspaceId}`
+        }
+      }
+
+      window.location.href = dest
+    } catch {
+      setError('Network error. Please try again.')
+    } finally {
+      setSubmitting(false)
     }
-
-    const result = await signIn('credentials', {
-      redirect: false,
-      email,
-      password,
-      callbackUrl,
-    })
-
-    if (!result?.ok) {
-      setError(result?.error ?? 'Authentication failed. Please check your credentials.')
-      return
-    }
-
-    window.location.href = callbackUrl
   }
 
   return (
@@ -109,9 +149,10 @@ export default function LoginButton({ callbackUrl }: LoginButtonProps) {
 
       <button
         type="submit"
-        className="w-full rounded-xl bg-primary py-3 text-sm font-semibold text-white transition hover:bg-primary/90"
+        disabled={submitting}
+        className="w-full rounded-xl bg-primary py-3 text-sm font-semibold text-white transition hover:bg-primary/90 disabled:opacity-60"
       >
-        {mode === 'login' ? 'Sign in' : 'Create account'}
+        {submitting ? 'Please wait…' : mode === 'login' ? 'Sign in' : 'Create account'}
       </button>
 
       <button

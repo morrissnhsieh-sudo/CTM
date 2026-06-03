@@ -16,8 +16,8 @@ export async function withRls<T>(
 ): Promise<T> {
   const { workspaceId, userId } = request.ctx
   return db.transaction(async (tx) => {
-    await tx.execute(sql`SET LOCAL app.workspace_id = ${workspaceId}`)
-    await tx.execute(sql`SET LOCAL app.user_id = ${userId}`)
+    await tx.execute(sql`SELECT set_config('app.workspace_id', ${workspaceId}, true)`)
+    await tx.execute(sql`SELECT set_config('app.user_id', ${userId}, true)`)
     return fn(tx as unknown as DB)
   })
 }

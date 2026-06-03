@@ -1,12 +1,12 @@
 import { create } from 'zustand'
 import { subscribeWithSelector } from 'zustand/middleware'
-import type { CellValue } from '@ctm/shared-types'
+import type { CellValue, CellFormat } from '@ctm/shared-types'
 
 export interface CellSelection {
-  startRow: number
-  startCol: number
-  endRow: number
-  endCol: number
+  startRow: number;
+  startCol: number;
+  endRow: number;
+  endCol: number;
 }
 
 export interface GridState {
@@ -31,6 +31,7 @@ export interface GridState {
   // Data (mirrors Yjs Y.Doc — source of truth is the CRDT)
   cellCache: Map<string, CellValue>      // "r{row}c{col}" → value
   formulaCache: Map<string, string>      // "r{row}c{col}" → formula
+  formatCache: Map<string, Partial<CellFormat>>    // "r{row}c{col}" → format
 
   // Actions
   setScroll: (top: number, left: number) => void
@@ -44,6 +45,10 @@ export interface GridState {
   setRowHeight: (row: number, height: number) => void
   setCellCache: (key: string, value: CellValue) => void
   setFormulaCache: (key: string, formula: string) => void
+  setFormatCache: (key: string, format: Partial<CellFormat>) => void
+  applyFormat: (format: Partial<CellFormat>) => void
+  undo: () => void
+  redo: () => void
   clearCellCache: () => void
 }
 
@@ -69,6 +74,7 @@ export const useGridStore = create<GridState>()(
 
     cellCache: new Map(),
     formulaCache: new Map(),
+    formatCache: new Map(),
 
     setScroll: (top, left) => set({ scrollTop: top, scrollLeft: left }),
     setViewport: (width, height) => set({ viewportWidth: width, viewportHeight: height }),
@@ -81,7 +87,29 @@ export const useGridStore = create<GridState>()(
     setRowHeight: (row, height) => set((s) => { const m = new Map(s.rowHeights); m.set(row, height); return { rowHeights: m } }),
     setCellCache: (key, value) => set((s) => { const m = new Map(s.cellCache); m.set(key, value); return { cellCache: m } }),
     setFormulaCache: (key, formula) => set((s) => { const m = new Map(s.formulaCache); m.set(key, formula); return { formulaCache: m } }),
-    clearCellCache: () => set({ cellCache: new Map(), formulaCache: new Map() }),
+    setFormatCache: (key, format) => set((s) => { const m = new Map(s.formatCache); m.set(key, format); return { formatCache: m } }),
+    applyFormat: (format) => {
+      const state = get()
+      const selection = state.selection
+      if (!selection) return
+      const m = new Map(state.formatCache)
+      const startRow = Math.min(selection.startRow, selection.endRow)
+      const endRow = Math.max(selection.startRow, selection.endRow)
+      const startCol = Math.min(selection.startCol, selection.endCol)
+      const endCol = Math.max(selection.startCol, selection.endCol)
+
+      for (let r = startRow; r <= endRow; r++) {
+        for (let c = startCol; c <= endCol; c++) {
+          const key = getCellKey(r, c)
+          const existing = m.get(key) ?? {}
+          m.set(key, { ...existing, ...format })
+        }
+      }
+      set({ formatCache: m })
+    },
+    undo: () => {},
+    redo: () => {},
+    clearCellCache: () => set({ cellCache: new Map(), formulaCache: new Map(), formatCache: new Map() }),
   }))
 )
 
