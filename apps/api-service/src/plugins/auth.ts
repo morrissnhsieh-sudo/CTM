@@ -1,5 +1,5 @@
 import fp from 'fastify-plugin'
-import { createRemoteJWKSet, jwtVerify } from 'jose'
+import { jwtVerify } from 'jose'
 import crypto from 'node:crypto'
 import { env } from '../env.js'
 import type { RequestContext } from '@ctm/shared-types'
@@ -11,21 +11,23 @@ declare module 'fastify' {
   }
 }
 
-// Cache JWKS remotely
-const JWKS = createRemoteJWKSet(new URL(env.KEYCLOAK_JWKS_URI), {
-  cooldownDuration: 300_000,  // 5 min cache
-})
-
 const INTERNAL_SERVICES = new Set(['pm-service', 'ai-service', 'messaging-service'])
 const PAT_PREFIX = 'ctm_pat_'
+const JWT_SECRET = new TextEncoder().encode(env.JWT_SECRET)
 
 export const authPlugin = fp(async (app) => {
   app.decorateRequest('ctx', null)
 
   app.addHook('preHandler', async (request, reply) => {
-    // Skip auth for health + docs
-    const path = request.routerPath ?? request.url
-    if (path === '/health' || path.startsWith('/v1/openapi') || path.startsWith('/mcp/auth')) {
+    // Skip auth for health, docs, and public auth endpoints
+    const path = request.url
+    if (
+      path === '/health' ||
+      path.startsWith('/v1/openapi') ||
+      path.startsWith('/mcp/auth') ||
+      path === '/v1/auth/login' ||
+      path === '/v1/auth/register'
+    ) {
       return
     }
 
@@ -50,7 +52,6 @@ export const authPlugin = fp(async (app) => {
         const raw = authHeader.replace('Bearer ', '')
         const hash = crypto.createHash('sha256').update(raw).digest('hex')
 
-        // Check Redis cache first
         const cached = await app.redis.get(`token:${hash}`)
         if (cached) {
           request.ctx = JSON.parse(cached) as RequestContext
@@ -84,8 +85,9 @@ export const authPlugin = fp(async (app) => {
       // ── JWT Bearer ──────────────────────────────────────
       if (authHeader.startsWith('Bearer ')) {
         const token = authHeader.slice(7)
-        const { payload } = await jwtVerify(token, JWKS, {
-          issuer: env.KEYCLOAK_ISSUER,
+        const { payload } = await jwtVerify(token, JWT_SECRET, {
+          issuer: env.JWT_ISSUER,
+          algorithms: ['HS256'],
         })
 
         const jwtPayload = payload as {
@@ -99,7 +101,6 @@ export const authPlugin = fp(async (app) => {
           return reply.code(401).send({ error: { code: 'UNAUTHORIZED', message: 'Invalid token claims', requestId: request.id as string } })
         }
 
-        // Prevent cross-workspace token reuse
         if (workspaceId && workspaceId !== jwtPayload.workspace_id) {
           return reply.code(401).send({ error: { code: 'UNAUTHORIZED', message: 'Token workspace mismatch', requestId: request.id as string } })
         }

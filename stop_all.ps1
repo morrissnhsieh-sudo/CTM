@@ -111,21 +111,11 @@ foreach ($svc in $appServices) {
 
 Write-Divider
 
-# ============================================================
-# Step 3: Stop Keycloak
-# ============================================================
-Write-Header "Step 3 - Stopping Keycloak (M10)"
-Write-Step "Stopping ctm-keycloak..."
-docker compose stop keycloak --timeout 30 2>$null
-docker compose rm -f keycloak 2>$null
-Write-Ok "Keycloak stopped"
-
-Write-Divider
 
 # ============================================================
-# Step 4: Stop infrastructure
+# Step 3: Stop infrastructure
 # ============================================================
-Write-Header "Step 4 - Stopping infrastructure services"
+Write-Header "Step 3 - Stopping infrastructure services"
 
 $infraServices = @(
     @{ name = "kafka-ui";   label = "Kafka UI" }
@@ -174,7 +164,6 @@ if ($Volumes) {
         "ctm_redis-data"
         "ctm_kafka-data"
         "ctm_minio-data"
-        "ctm_keycloak-data"
     )
 
     foreach ($vol in $namedVolumes) {

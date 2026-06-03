@@ -28,10 +28,11 @@ export const workspacesRouter: FastifyPluginAsync = async (app) => {
         ownerId: userId,
       }).returning()
 
+      // @ts-ignore -- Drizzle v0.41: .default() columns excluded from insert type
       await tx.insert(users).values({
         id: userId,
         workspaceId,
-        email: '',  // will be updated via Keycloak sync
+        email: '',
         name: userId,
         role: 'OWNER',
       })

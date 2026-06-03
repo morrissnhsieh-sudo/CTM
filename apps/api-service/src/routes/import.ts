@@ -90,6 +90,7 @@ export const importRouter: FastifyPluginAsync = async (app) => {
 
     // ── Create import job ─────────────────────────────────────────────────────
     const jobRow = await withRls(app.db, request, async (tx) => {
+      // @ts-ignore -- Drizzle v0.41: .default() columns excluded from insert type
       const [j] = await tx.insert(importJobs).values({
         id:           uuid(),
         workspaceId:  request.ctx.workspaceId,

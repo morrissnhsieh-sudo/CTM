@@ -62,8 +62,8 @@ export const sheetsRouter: FastifyPluginAsync = async (app) => {
           id: sheetId,
           workspaceId: request.ctx.workspaceId,
           title: body.title,
-          description: body.description ?? null,
-          projectId: body.projectId ?? null,
+          ...(body.description !== undefined && body.description !== null && { description: body.description }),
+          ...(body.projectId !== undefined && { projectId: body.projectId }),
           createdBy: request.ctx.userId,
         })
         .returning()
@@ -123,7 +123,7 @@ export const sheetsRouter: FastifyPluginAsync = async (app) => {
           ...(body.description !== undefined && { description: body.description }),
           ...(body.settings !== undefined && { settings: body.settings }),
           updatedAt: new Date(),
-        })
+        } as any)
         .where(and(eq(sheets.id, id), eq(sheets.workspaceId, request.ctx.workspaceId)))
         .returning(),
     )
@@ -146,6 +146,7 @@ export const sheetsRouter: FastifyPluginAsync = async (app) => {
     const [deleted] = await withRls(app.db, request, async (tx) =>
       tx
         .update(sheets)
+        // @ts-ignore -- Drizzle v0.41: PgUpdateSetSource excludes defaulted/nullable columns
         .set({ archivedAt: new Date() })
         .where(and(eq(sheets.id, id), eq(sheets.workspaceId, request.ctx.workspaceId)))
         .returning(),

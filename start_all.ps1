@@ -144,7 +144,7 @@ if (-not $NoHealthWait) {
     Write-Header "Step 4 - Waiting for infrastructure health checks"
 
     $healthTargets = @{
-        "ctm-postgres" = 60
+        "ctm-postgres" = 120
         "ctm-redis"    = 30
         "ctm-kafka"    = 90
         "ctm-minio"    = 30
@@ -178,51 +178,11 @@ if (-not $NoHealthWait) {
 
 Write-Divider
 
-# ============================================================
-# Step 5: Start Keycloak
-# ============================================================
-Write-Header "Step 5 - Starting Keycloak (M10 Auth)"
-
-Write-Step "Starting ctm-keycloak..."
-docker compose up -d keycloak
-if ($LASTEXITCODE -ne 0) {
-    Write-Fail "Failed to start keycloak"
-    exit 1
-}
-
-if (-not $NoHealthWait) {
-    Write-Step "Waiting for Keycloak to be ready (up to 120s)..."
-    $elapsed = 0
-    $healthy = $false
-
-    while ($elapsed -lt 120) {
-        try {
-            $resp = Invoke-WebRequest -Uri "http://localhost:8080/health/ready" `
-                -TimeoutSec 3 -UseBasicParsing -ErrorAction SilentlyContinue
-            if ($resp.StatusCode -eq 200) {
-                $healthy = $true
-                break
-            }
-        } catch { }
-
-        Start-Sleep 5
-        $elapsed += 5
-        Write-Host "    [$elapsed s] waiting..." -ForegroundColor DarkGray
-    }
-
-    if ($healthy) {
-        Write-Ok "Keycloak is ready"
-    } else {
-        Write-Warn "Keycloak may still be starting - continuing anyway"
-    }
-}
-
-Write-Divider
 
 # ============================================================
-# Step 6: Start application microservices
+# Step 5: Start application microservices
 # ============================================================
-Write-Header "Step 6 - Starting application microservices"
+Write-Header "Step 5 - Starting application microservices"
 
 $appServices = @(
     @{ name = "collab-service";    label = "M2 Collaboration Engine" }
@@ -232,25 +192,45 @@ $appServices = @(
     @{ name = "messaging-service"; label = "M7 Messaging Service" }
 )
 
+function Build-ServiceIfNeeded($serviceName, $label) {
+    if ($Rebuild) {
+        Write-Step "Building $label..."
+        docker compose build $serviceName --quiet
+        if ($LASTEXITCODE -ne 0) {
+            Write-Fail "Build failed for $label"
+            exit 1
+        }
+        return
+    }
+
+    $imageId = docker compose images --quiet $serviceName 2>$null
+    if (-not $imageId) {
+        Write-Step "Building missing image for $label..."
+        docker compose build $serviceName --quiet
+        if ($LASTEXITCODE -ne 0) {
+            Write-Fail "Build failed for $label"
+            exit 1
+        }
+    }
+}
+
 foreach ($svc in $appServices) {
     Write-Step "Starting $($svc.label)..."
-    if ($Rebuild) {
-        docker compose build $svc.name --quiet
-    }
+    Build-ServiceIfNeeded $svc.name $svc.label
     docker compose up -d $svc.name
     if ($LASTEXITCODE -ne 0) {
-        Write-Warn "Failed to start $($svc.name) - check: docker compose logs $($svc.name)"
-    } else {
-        Write-Ok "$($svc.label) started"
+        Write-Fail "Failed to start $($svc.name) - check: docker compose logs $($svc.name)"
+        exit 1
     }
+    Write-Ok "$($svc.label) started"
 }
 
 Write-Divider
 
 # ============================================================
-# Step 7: Start Frontend (M1)
+# Step 6: Start Frontend (M1)
 # ============================================================
-Write-Header "Step 7 - Starting Frontend (M1 - Next.js 15)"
+Write-Header "Step 6 - Starting Frontend (M1 - Next.js 15)"
 
 if ($Rebuild) {
     docker compose build frontend --quiet
@@ -265,16 +245,15 @@ if ($LASTEXITCODE -eq 0) {
 Write-Divider
 
 # ============================================================
-# Step 8: Wait for application health endpoints
+# Step 6: Wait for application health endpoints
 # ============================================================
 if (-not $NoHealthWait) {
-    Write-Header "Step 8 - Waiting for application health endpoints"
+    Write-Header "Step 6 - Waiting for application health endpoints"
 
     $healthEndpoints = @(
-        @{ url = "http://localhost:3001/health"; label = "M3 API Gateway";       timeout = 60 }
-        @{ url = "http://localhost:8001/health"; label = "M6 AI Service";        timeout = 90 }
-        @{ url = "http://localhost:3002/health"; label = "M7 Messaging Service"; timeout = 60 }
-        @{ url = "http://localhost:3000";        label = "M1 Frontend";          timeout = 90 }
+        @{ url = "http://localhost:3001/health"; label = "M3 API Gateway";       timeout = 60; reqTimeout = 5 }
+        @{ url = "http://localhost:8001/health"; label = "M6 AI Service";        timeout = 90; reqTimeout = 5 }
+        @{ url = "http://localhost:3002/health"; label = "M7 Messaging Service"; timeout = 60; reqTimeout = 5 }
     )
 
     foreach ($ep in $healthEndpoints) {
@@ -282,10 +261,11 @@ if (-not $NoHealthWait) {
         $elapsed = 0
         $up = $false
 
+        $reqTimeout = if ($ep.reqTimeout) { $ep.reqTimeout } else { 5 }
         while ($elapsed -lt $ep.timeout) {
             try {
                 $resp = Invoke-WebRequest -Uri $ep.url `
-                    -TimeoutSec 3 -UseBasicParsing -ErrorAction SilentlyContinue
+                    -TimeoutSec $reqTimeout -UseBasicParsing -ErrorAction SilentlyContinue
                 if ($resp.StatusCode -lt 400) {
                     $up = $true
                     break
@@ -303,14 +283,35 @@ if (-not $NoHealthWait) {
             Write-Warn "$($ep.label) did not respond in $($ep.timeout)s - may still be starting"
         }
     }
+
+    # ── Frontend: TCP port check (avoids triggering Next.js JIT compilation) ──
+    Write-Step "Checking M1 Frontend (port 3000)..."
+    $feUp = $false
+    $feElapsed = 0
+    while ($feElapsed -lt 30) {
+        try {
+            $tcp = New-Object System.Net.Sockets.TcpClient
+            $tcp.Connect("localhost", 3000)
+            $tcp.Close()
+            $feUp = $true
+            break
+        } catch { }
+        Start-Sleep 2
+        $feElapsed += 2
+    }
+    if ($feUp) {
+        Write-Ok "M1 Frontend is up at http://localhost:3000"
+    } else {
+        Write-Warn "M1 Frontend port 3000 not open after 30s - check: docker compose logs frontend"
+    }
 }
 
 Write-Divider
 
 # ============================================================
-# Step 9: Status summary
+# Step 7: Status summary
 # ============================================================
-Write-Header "Step 9 - Service status"
+Write-Header "Step 7 - Service status"
 
 $allContainers = @(
     @{ container = "ctm-postgres";   label = "M9  PostgreSQL 16 + pgvector";   port = "5432" }
@@ -318,7 +319,6 @@ $allContainers = @(
     @{ container = "ctm-kafka";      label = "M8  Kafka 3.7 (KRaft)";          port = "9092" }
     @{ container = "ctm-kafka-ui";   label = "M8  Kafka UI";                   port = "8090" }
     @{ container = "ctm-minio";      label = "M9  MinIO (S3)";                 port = "9001" }
-    @{ container = "ctm-keycloak";   label = "M10 Keycloak 24";                port = "8080" }
     @{ container = "ctm-collab";     label = "M2  Collaboration Engine";       port = "1234" }
     @{ container = "ctm-api";        label = "M3+M4 API Gateway + Formulas";   port = "3001" }
     @{ container = "ctm-pm";         label = "M5  PM Service (Go)";            port = "8085" }
@@ -370,13 +370,12 @@ Write-Host ""
 Write-Host "  Access points:" -ForegroundColor White
 Write-Host "    Frontend    -> http://localhost:3000" -ForegroundColor Cyan
 Write-Host "    API Docs    -> http://localhost:3001/v1/docs  (Swagger)" -ForegroundColor Cyan
-Write-Host "    Keycloak    -> http://localhost:8080  (admin / admin123)" -ForegroundColor Cyan
 Write-Host "    Kafka UI    -> http://localhost:8090" -ForegroundColor Cyan
 Write-Host "    MinIO       -> http://localhost:9001  (ctm_admin / ctm_minio_pass)" -ForegroundColor Cyan
 Write-Host "    AI Service  -> http://localhost:8001/docs  (FastAPI)" -ForegroundColor Cyan
 Write-Host ""
 Write-Host "  Demo login:  demo@ctm.app / demo123" -ForegroundColor Yellow
-Write-Host "  Admin login: admin@ctm.app / admin123" -ForegroundColor Yellow
+Write-Host "  Admin login: admin@ctm.dev / password123" -ForegroundColor Yellow
 Write-Host ""
 Write-Host "  Useful commands:" -ForegroundColor White
 Write-Host "    docker compose logs -f <service>   # stream logs" -ForegroundColor DarkGray

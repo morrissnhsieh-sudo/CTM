@@ -69,6 +69,7 @@ export const columnsRouter: FastifyPluginAsync = async (app) => {
         position = existing.length
       }
 
+      // @ts-ignore -- Drizzle v0.41: .default() columns excluded from insert type
       return tx.insert(columns).values({
         id: uuid(),
         sheetId,

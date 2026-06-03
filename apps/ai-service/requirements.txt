@@ -11,7 +11,7 @@ tiktoken>=0.7.0
 # Google Cloud auth + Vertex AI SDK
 google-auth>=2.30.0
 google-auth-httplib2>=0.2.0
-google-cloud-aiplatform>=1.60.0
+google-cloud-aiplatform>=1.60.0,<2.0.0
 vertexai>=1.60.0
 
 # LangGraph / LangChain — keep versions aligned
@@ -31,7 +31,7 @@ pgvector>=0.3.0
 aiokafka>=0.10.0
 
 # Redis
-redis[asyncio]>=5.0.0
+redis>=5.0.0
 
 # Observability
 opentelemetry-api>=1.25.0

@@ -11,7 +11,7 @@ export const aiSchema = pgSchema('ai')
 
 // ─── Workspaces ───────────────────────────────────────────────────────────────
 export const workspaces = pgTable('workspaces', {
-  id:          uuid('id').primaryKey().defaultRandom(),
+  id:          uuid('id').primaryKey(),
   name:        text('name').notNull(),
   plan:        text('plan').notNull().default('free'),
   ownerId:     uuid('owner_id').notNull(),
@@ -22,21 +22,22 @@ export const workspaces = pgTable('workspaces', {
 
 // ─── Users ────────────────────────────────────────────────────────────────────
 export const users = pgTable('users', {
-  id:          uuid('id').primaryKey().defaultRandom(),
+  id:          uuid('id').primaryKey(),
   workspaceId: uuid('workspace_id').notNull().references(() => workspaces.id, { onDelete: 'cascade' }),
-  email:       text('email').notNull(),
-  name:        text('name').notNull(),
-  avatarUrl:   text('avatar_url'),
-  role:        text('role').notNull().default('VIEWER'),
-  lastActive:  timestamp('last_active', { withTimezone: true }),
-  createdAt:   timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  email:        text('email').notNull(),
+  passwordHash: text('password_hash'),
+  name:         text('name').notNull(),
+  avatarUrl:    text('avatar_url'),
+  role:         text('role').notNull().default('VIEWER'),
+  lastActive:   timestamp('last_active', { withTimezone: true }),
+  createdAt:    timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
 }, (t) => ({
   workspaceEmailUniq: uniqueIndex('users_workspace_email_uniq').on(t.workspaceId, t.email),
 }))
 
 // ─── Sheets ───────────────────────────────────────────────────────────────────
 export const sheets = pgTable('sheets', {
-  id:          uuid('id').primaryKey().defaultRandom(),
+  id:          uuid('id').primaryKey(),
   workspaceId: uuid('workspace_id').notNull().references(() => workspaces.id, { onDelete: 'cascade' }),
   projectId:   uuid('project_id'),
   title:       text('title').notNull(),
@@ -50,7 +51,7 @@ export const sheets = pgTable('sheets', {
 
 // ─── Columns ─────────────────────────────────────────────────────────────────
 export const columns = pgTable('columns', {
-  id:          uuid('id').primaryKey().defaultRandom(),
+  id:          uuid('id').primaryKey(),
   sheetId:     uuid('sheet_id').notNull().references(() => sheets.id, { onDelete: 'cascade' }),
   name:        text('name').notNull(),
   type:        text('type').notNull(),
@@ -65,7 +66,7 @@ export const columns = pgTable('columns', {
 
 // ─── Rows ─────────────────────────────────────────────────────────────────────
 export const rows = pgTable('rows', {
-  id:          uuid('id').primaryKey().defaultRandom(),
+  id:          uuid('id').primaryKey(),
   sheetId:     uuid('sheet_id').notNull().references(() => sheets.id, { onDelete: 'cascade' }),
   position:    integer('position').notNull(),
   createdBy:   uuid('created_by').notNull().references(() => users.id),
@@ -89,7 +90,7 @@ export const cells = pgTable('cells', {
 
 // ─── API Tokens ───────────────────────────────────────────────────────────────
 export const apiTokens = pgTable('api_tokens', {
-  id:          uuid('id').primaryKey().defaultRandom(),
+  id:          uuid('id').primaryKey(),
   userId:      uuid('user_id').notNull().references(() => users.id, { onDelete: 'cascade' }),
   workspaceId: uuid('workspace_id').notNull().references(() => workspaces.id, { onDelete: 'cascade' }),
   name:        text('name').notNull(),
@@ -110,7 +111,7 @@ export const collabDocuments = collabSchema.table('documents', {
 
 // ─── Discussions ──────────────────────────────────────────────────────────────
 export const discussions = pgTable('discussions', {
-  id:          uuid('id').primaryKey().defaultRandom(),
+  id:          uuid('id').primaryKey(),
   workspaceId: uuid('workspace_id').notNull().references(() => workspaces.id, { onDelete: 'cascade' }),
   sheetId:     uuid('sheet_id').notNull().references(() => sheets.id, { onDelete: 'cascade' }),
   title:       text('title'),
@@ -125,7 +126,7 @@ export const discussions = pgTable('discussions', {
 })
 
 export const discussionComments = pgTable('discussion_comments', {
-  id:           uuid('id').primaryKey().defaultRandom(),
+  id:           uuid('id').primaryKey(),
   discussionId: uuid('discussion_id').notNull().references(() => discussions.id, { onDelete: 'cascade' }),
   authorId:     uuid('author_id').notNull().references(() => users.id),
   body:         text('body').notNull(),
@@ -136,7 +137,7 @@ export const discussionComments = pgTable('discussion_comments', {
 
 // ─── Export Jobs ──────────────────────────────────────────────────────────────
 export const exportJobs = pgTable('export_jobs', {
-  id:           uuid('id').primaryKey().defaultRandom(),
+  id:           uuid('id').primaryKey(),
   workspaceId:  uuid('workspace_id').notNull().references(() => workspaces.id, { onDelete: 'cascade' }),
   sheetId:      uuid('sheet_id').notNull().references(() => sheets.id, { onDelete: 'cascade' }),
   requestedBy:  uuid('requested_by').notNull().references(() => users.id),
@@ -153,7 +154,7 @@ export const exportJobs = pgTable('export_jobs', {
 
 // ─── Import Jobs ──────────────────────────────────────────────────────────────
 export const importJobs = pgTable('import_jobs', {
-  id:           uuid('id').primaryKey().defaultRandom(),
+  id:           uuid('id').primaryKey(),
   workspaceId:  uuid('workspace_id').notNull().references(() => workspaces.id, { onDelete: 'cascade' }),
   sheetId:      uuid('sheet_id').references(() => sheets.id, { onDelete: 'set null' }),
   requestedBy:  uuid('requested_by').notNull().references(() => users.id),
@@ -171,7 +172,7 @@ export const importJobs = pgTable('import_jobs', {
 
 // ─── Webhook Deliveries ───────────────────────────────────────────────────────
 export const webhookDeliveries = pgTable('webhook_deliveries', {
-  id:           uuid('id').primaryKey().defaultRandom(),
+  id:           uuid('id').primaryKey(),
   webhookId:    uuid('webhook_id').notNull().references(() => webhooks.id, { onDelete: 'cascade' }),
   workspaceId:  uuid('workspace_id').notNull().references(() => workspaces.id, { onDelete: 'cascade' }),
   eventType:    text('event_type').notNull(),
@@ -189,7 +190,7 @@ export const webhookDeliveries = pgTable('webhook_deliveries', {
 
 // ─── Webhooks ─────────────────────────────────────────────────────────────────
 export const webhooks = pgTable('webhooks', {
-  id:          uuid('id').primaryKey().defaultRandom(),
+  id:          uuid('id').primaryKey(),
   workspaceId: uuid('workspace_id').notNull().references(() => workspaces.id, { onDelete: 'cascade' }),
   url:         text('url').notNull(),
   secret:      text('secret').notNull(),

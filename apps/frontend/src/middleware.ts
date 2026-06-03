@@ -1,6 +1,5 @@
-import { auth } from './api/auth/[...nextauth]/auth'
+import { auth } from './app/api/auth/[...nextauth]/auth'
 import { NextResponse } from 'next/server'
-import type { NextRequest } from 'next/server'
 
 export default auth((req) => {
   const { pathname } = req.nextUrl
@@ -11,7 +10,7 @@ export default auth((req) => {
   }
 
   // Not authenticated → redirect to login
-  if (!req.auth) {
+  if (!req.auth?.user) {
     const loginUrl = new URL('/login', req.url)
     loginUrl.searchParams.set('callbackUrl', req.url)
     return NextResponse.redirect(loginUrl)

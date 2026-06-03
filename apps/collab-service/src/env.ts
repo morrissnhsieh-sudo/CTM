@@ -6,8 +6,8 @@ const EnvSchema = z.object({
   DB_URL: z.string().url(),
   REDIS_URL: z.string().default('redis://localhost:6379'),
   KAFKA_BROKERS: z.string().default('localhost:9092'),
-  KEYCLOAK_JWKS_URI: z.string().url(),
-  KEYCLOAK_ISSUER: z.string().url(),
+  JWT_SECRET: z.string().min(32),
+  JWT_ISSUER: z.string().url().default('http://localhost/'),
   SNAPSHOT_INTERVAL_MS: z.coerce.number().default(300_000),  // 5 min
   DEBOUNCE_WRITE_MS: z.coerce.number().default(500),
 })

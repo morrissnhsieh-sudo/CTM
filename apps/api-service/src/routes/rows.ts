@@ -163,7 +163,7 @@ export const rowsRouter: FastifyPluginAsync = async (app) => {
           cellInserts.push({
             rowId: row.id,
             colId,
-            value: value == null ? null : String(value),
+            ...(value != null && { value: String(value) }),
             updatedBy: request.ctx.userId,
           })
         }
@@ -219,10 +219,8 @@ export const rowsRouter: FastifyPluginAsync = async (app) => {
           .values({
             rowId,
             colId,
-            value: isFormula ? null : value,
-            formula: isFormula ? value : null,
+            ...(isFormula ? { formula: value } : (value != null ? { value } : {})),
             updatedBy: request.ctx.userId,
-            updatedAt: new Date(),
           })
           .onConflictDoUpdate({
             target: [cells.rowId, cells.colId],
@@ -231,7 +229,7 @@ export const rowsRouter: FastifyPluginAsync = async (app) => {
               formula: isFormula ? value : null,
               updatedBy: request.ctx.userId,
               updatedAt: new Date(),
-            },
+            } as any,
           })
 
         changedCols.push(colId)
@@ -244,6 +242,7 @@ export const rowsRouter: FastifyPluginAsync = async (app) => {
 
       await tx
         .update(rows)
+        // @ts-ignore -- Drizzle v0.41: PgUpdateSetSource excludes defaulted/nullable columns
         .set({ updatedAt: new Date() })
         .where(eq(rows.id, rowId))
 
@@ -274,6 +273,7 @@ export const rowsRouter: FastifyPluginAsync = async (app) => {
     await withRls(app.db, request, async (tx) =>
       tx
         .update(rows)
+        // @ts-ignore -- Drizzle v0.41: PgUpdateSetSource excludes defaulted/nullable columns
         .set({ deletedAt: new Date() })
         .where(and(eq(rows.id, rowId), eq(rows.sheetId, sheetId))),
     )

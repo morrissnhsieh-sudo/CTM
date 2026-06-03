@@ -3,7 +3,7 @@ import { Server as SocketIoServer } from 'socket.io'
 import { createAdapter } from '@socket.io/redis-adapter'
 import Redis from 'ioredis'
 import pg from 'pg'
-import { createRemoteJWKSet, jwtVerify } from 'jose'
+import { jwtVerify } from 'jose'
 import { Kafka } from 'kafkajs'
 import pino from 'pino'
 import { CommentsRouter } from './routes/comments.js'
@@ -18,8 +18,8 @@ const env = {
   DB_URL: process.env['DB_URL'] ?? '',
   REDIS_URL: process.env['REDIS_URL'] ?? 'redis://localhost:6379',
   KAFKA_BROKERS: process.env['KAFKA_BROKERS'] ?? 'localhost:9092',
-  KEYCLOAK_JWKS_URI: process.env['KEYCLOAK_JWKS_URI'] ?? '',
-  KEYCLOAK_ISSUER: process.env['KEYCLOAK_ISSUER'] ?? '',
+  JWT_SECRET: process.env['JWT_SECRET'] ?? '',
+  JWT_ISSUER: process.env['JWT_ISSUER'] ?? 'http://localhost/',
 }
 
 const logger = pino({ level: 'info' })
@@ -47,7 +47,7 @@ async function main() {
     }
   }
 
-  const JWKS = createRemoteJWKSet(new URL(env.KEYCLOAK_JWKS_URI), { cooldownDuration: 300_000 })
+  const JWT_SECRET = new TextEncoder().encode(env.JWT_SECRET)
 
   // ─── Fastify HTTP server ──────────────────────────────────
   // Fastify 5: pass logger as pino options object, not a pino instance
@@ -77,7 +77,10 @@ async function main() {
       const token = socket.handshake.auth['token'] as string
       if (!token) return next(new Error('Missing token'))
 
-      const { payload } = await jwtVerify(token, JWKS, { issuer: env.KEYCLOAK_ISSUER })
+      const { payload } = await jwtVerify(token, JWT_SECRET, {
+        issuer: env.JWT_ISSUER,
+        algorithms: ['HS256'],
+      })
       socket.data['userId'] = payload.sub
       socket.data['workspaceId'] = payload['workspace_id']
       next()

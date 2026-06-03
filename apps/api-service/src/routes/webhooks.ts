@@ -50,6 +50,7 @@ export const webhooksRouter: FastifyPluginAsync = async (app) => {
     const secret = crypto.randomBytes(32).toString('hex')
 
     const [wh] = await withRls(app.db, request, async (tx) =>
+      // @ts-ignore -- Drizzle v0.41: .default() columns excluded from insert/update type
       tx.insert(webhooks).values({
         id:          uuid(),
         workspaceId: request.ctx.workspaceId,
@@ -136,6 +137,7 @@ export const webhooksRouter: FastifyPluginAsync = async (app) => {
     const { id } = request.params as { id: string }
     await withRls(app.db, request, async (tx) =>
       tx.update(webhooks)
+        // @ts-ignore -- Drizzle v0.41: PgUpdateSetSource excludes defaulted/nullable columns
         .set({ enabled: false })
         .where(and(eq(webhooks.id, id), eq(webhooks.workspaceId, request.ctx.workspaceId))),
     )
@@ -208,7 +210,7 @@ export const webhooksRouter: FastifyPluginAsync = async (app) => {
           status:      'retrying',
           attempt:     nextAttempt,
           nextRetryAt: new Date(),
-        })
+        } as any)
         .where(eq(webhookDeliveries.id, deliveryId))
         .returning()
 

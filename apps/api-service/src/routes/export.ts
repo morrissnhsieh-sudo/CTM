@@ -49,6 +49,7 @@ export const exportRouter: FastifyPluginAsync = async (app) => {
         .limit(1)
       if (!sheet) return null
 
+      // @ts-ignore -- Drizzle v0.41: .default() columns excluded from insert type
       const [j] = await tx.insert(exportJobs).values({
         id:          uuid(),
         workspaceId: request.ctx.workspaceId,
@@ -121,7 +122,7 @@ export const exportRouter: FastifyPluginAsync = async (app) => {
             downloadUrl,
             expiresAt: new Date(Date.now() + 15 * 60 * 1000),
             updatedAt: new Date(),
-          })
+          } as any)
           .where(eq(exportJobs.id, jobId)),
       )
     }
@@ -168,6 +169,7 @@ export const exportRouter: FastifyPluginAsync = async (app) => {
 
     await withRls(app.db, request, async (tx) =>
       tx.update(exportJobs)
+        // @ts-ignore -- Drizzle v0.41: PgUpdateSetSource excludes defaulted/nullable columns
         .set({ status: 'queued', errorMessage: null, updatedAt: new Date() })
         .where(eq(exportJobs.id, jobId)),
     )

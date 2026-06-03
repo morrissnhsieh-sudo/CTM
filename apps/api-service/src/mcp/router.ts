@@ -1,6 +1,7 @@
 import type { FastifyPluginAsync } from 'fastify'
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js'
 import { z } from 'zod'
+import crypto from 'node:crypto'
 import { eq, and, isNull, asc, sql } from 'drizzle-orm'
 import { sheets, columns, rows, cells } from '../db/schema.js'
 import { withRls } from '../db/helpers.js'
@@ -11,9 +12,9 @@ import { withRls } from '../db/helpers.js'
  * (Claude, Cursor, Codex, etc.)
  */
 export const mcpRouter: FastifyPluginAsync = async (app) => {
-  // MCP OAuth callback
+  // MCP callback endpoint for tool authorization
   app.get('/auth/callback', async (request, reply) => {
-    reply.send({ status: 'MCP OAuth callback — handled by Keycloak' })
+    reply.send({ status: 'MCP OAuth callback — local JWT auth only' })
   })
 
   // MCP HTTP/SSE transport endpoint
@@ -29,12 +30,15 @@ export const mcpRouter: FastifyPluginAsync = async (app) => {
       version: '1.0.0',
     })
 
+    type ToolResult = { content: Array<{ type: 'text'; text: string }> }
+
     // ── Tool: read_sheet ──────────────────────────────────────
+    // @ts-ignore -- Drizzle v0.41 TS2589: MCP SDK type inference too deep
     server.tool(
       'read_sheet',
       'Read the schema and metadata of a CTM sheet',
       { sheetId: z.string().describe('UUID of the sheet') },
-      async ({ sheetId }) => {
+      async ({ sheetId }): Promise<ToolResult> => {
         const result = await withRls(app.db, request, async (tx) => {
           const [sheet] = await tx.select().from(sheets)
             .where(and(eq(sheets.id, sheetId), eq(sheets.workspaceId, ctx.workspaceId)))
@@ -61,6 +65,7 @@ export const mcpRouter: FastifyPluginAsync = async (app) => {
     )
 
     // ── Tool: read_rows ───────────────────────────────────────
+    // @ts-ignore -- Drizzle v0.41 TS2589: MCP SDK type inference too deep
     server.tool(
       'read_rows',
       'Read rows from a CTM sheet with pagination',
@@ -69,7 +74,7 @@ export const mcpRouter: FastifyPluginAsync = async (app) => {
         limit: z.number().int().min(1).max(500).default(100).describe('Max rows to return'),
         offset: z.number().int().min(0).default(0).describe('Row offset'),
       },
-      async ({ sheetId, limit, offset }) => {
+      async ({ sheetId, limit, offset }): Promise<ToolResult> => {
         const rowData = await withRls(app.db, request, async (tx) => {
           const rowList = await tx.select().from(rows)
             .where(and(eq(rows.sheetId, sheetId), isNull(rows.deletedAt)))
@@ -101,6 +106,7 @@ export const mcpRouter: FastifyPluginAsync = async (app) => {
     )
 
     // ── Tool: update_cell ─────────────────────────────────────
+    // @ts-ignore -- Drizzle v0.41 TS2589: MCP SDK type inference too deep
     server.tool(
       'update_cell',
       'Update a single cell value in a CTM sheet',
@@ -110,7 +116,7 @@ export const mcpRouter: FastifyPluginAsync = async (app) => {
         colId: z.string().describe('UUID of the column'),
         value: z.string().describe('New cell value (formula starts with =)'),
       },
-      async ({ sheetId, rowId, colId, value }) => {
+      async ({ sheetId, rowId, colId, value }): Promise<ToolResult> => {
         if (ctx.role === 'VIEWER' || ctx.role === 'COMMENTER') {
           return { content: [{ type: 'text' as const, text: 'Error: EDITOR role required to update cells' }] }
         }
@@ -119,18 +125,16 @@ export const mcpRouter: FastifyPluginAsync = async (app) => {
           const isFormula = value.startsWith('=')
           await tx.insert(cells).values({
             rowId, colId,
-            value: isFormula ? null : value,
-            formula: isFormula ? value : null,
+            ...(isFormula ? { formula: value } : { value }),
             updatedBy: ctx.userId,
-            updatedAt: new Date(),
           }).onConflictDoUpdate({
             target: [cells.rowId, cells.colId],
             set: {
-              value: isFormula ? null : value,
-              formula: isFormula ? value : null,
+              value: isFormula ? sql`NULL` : value,
+              formula: isFormula ? value : sql`NULL`,
               updatedBy: ctx.userId,
               updatedAt: new Date(),
-            },
+            } as any,
           })
         })
 
@@ -139,6 +143,7 @@ export const mcpRouter: FastifyPluginAsync = async (app) => {
     )
 
     // ── Tool: insert_row ──────────────────────────────────────
+    // @ts-ignore -- Drizzle v0.41 TS2589: MCP SDK type inference too deep
     server.tool(
       'insert_row',
       'Insert a new row into a CTM sheet',
@@ -146,7 +151,7 @@ export const mcpRouter: FastifyPluginAsync = async (app) => {
         sheetId: z.string().describe('UUID of the sheet'),
         cells: z.record(z.string()).describe('Map of colId → value'),
       },
-      async ({ sheetId, cells: cellValues }) => {
+      async ({ sheetId, cells: cellValues }): Promise<ToolResult> => {
         if (ctx.role === 'VIEWER' || ctx.role === 'COMMENTER') {
           return { content: [{ type: 'text' as const, text: 'Error: EDITOR role required' }] }
         }
@@ -171,6 +176,7 @@ export const mcpRouter: FastifyPluginAsync = async (app) => {
             colId,
             value,
             updatedBy: ctx.userId,
+            updatedAt: new Date(),
           }))
 
           if (cellInserts.length) {
@@ -183,6 +189,7 @@ export const mcpRouter: FastifyPluginAsync = async (app) => {
     )
 
     // ── Tool: query_data_nl ───────────────────────────────────
+    // @ts-ignore -- Drizzle v0.41 TS2589: MCP SDK type inference too deep
     server.tool(
       'query_data_nl',
       'Query spreadsheet data using natural language (Text-to-SQL via AI)',
@@ -190,7 +197,7 @@ export const mcpRouter: FastifyPluginAsync = async (app) => {
         sheetId: z.string().describe('UUID of the sheet to query'),
         question: z.string().describe('Natural language question about the data'),
       },
-      async ({ sheetId, question }) => {
+      async ({ sheetId, question }): Promise<ToolResult> => {
         // Proxy to M6 AI service
         const response = await fetch(`${process.env['AI_SERVICE_URL']}/query`, {
           method: 'POST',
@@ -215,8 +222,15 @@ export const mcpRouter: FastifyPluginAsync = async (app) => {
     )
 
     // Return the tool list as JSON for HTTP transport
-    const tools = await server.listTools()
-    return reply.send(tools)
+    return reply.send({
+      tools: [
+        'read_sheet',
+        'read_rows',
+        'update_cell',
+        'insert_row',
+        'query_data_nl',
+      ],
+    })
   })
 
   // GET /mcp — MCP server info

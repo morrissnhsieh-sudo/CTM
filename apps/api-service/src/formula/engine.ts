@@ -1,4 +1,5 @@
-import HyperFormula from 'hyperformula'
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+const HyperFormula = require('hyperformula').default as any
 import type { DetailedCellError, ExportedCellChange } from 'hyperformula'
 import { Mutex } from 'async-mutex'
 import { Decimal } from 'decimal.js'

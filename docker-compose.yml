@@ -12,7 +12,6 @@ volumes:
   redis-data:
   kafka-data:
   minio-data:
-  keycloak-data:
 
 services:
 
@@ -35,7 +34,8 @@ services:
       test: ["CMD-SHELL", "pg_isready -U ctm -d ctm"]
       interval: 5s
       timeout: 5s
-      retries: 10
+      retries: 12
+      start_period: 60s
     networks: [ctm-net]
 
   # ??? M9: Redis 7.2 ???????????????????????????????????????????????????????????
@@ -110,9 +110,11 @@ services:
       - minio-data:/data
     command: server /data --console-address ":9001"
     healthcheck:
-      test: ["CMD", "mc", "ready", "local"]
+      test: ["CMD-SHELL", "curl -sf http://localhost:9000/minio/health/live || exit 1"]
       interval: 5s
-      retries: 5
+      timeout: 5s
+      retries: 10
+      start_period: 10s
     networks: [ctm-net]
 
   # MinIO bucket initialization
@@ -133,37 +135,6 @@ services:
       "
     networks: [ctm-net]
 
-  # ??? M10: Keycloak 24 ????????????????????????????????????????????????????????
-  keycloak:
-    image: quay.io/keycloak/keycloak:24.0
-    container_name: ctm-keycloak
-    environment:
-      KC_DB: postgres
-      KC_DB_URL: jdbc:postgresql://postgres:5432/ctm
-      KC_DB_USERNAME: ctm
-      KC_DB_PASSWORD: ctm_dev_pass
-      KC_DB_SCHEMA: keycloak
-      KEYCLOAK_ADMIN: admin
-      KEYCLOAK_ADMIN_PASSWORD: admin_dev_pass
-      KC_HOSTNAME: localhost
-      KC_HOSTNAME_PORT: "8080"
-      KC_HTTP_ENABLED: "true"
-      KC_HEALTH_ENABLED: "true"
-    ports:
-      - "8080:8080"
-    command: start-dev --import-realm
-    volumes:
-      - ./infra/keycloak/realm-export.json:/opt/keycloak/data/import/realm-export.json:ro
-    depends_on:
-      postgres:
-        condition: service_healthy
-    healthcheck:
-      test: ["CMD-SHELL", "exec 3<>/dev/tcp/localhost/8080 && echo -e 'GET /health/ready HTTP/1.0\r\n\r\n' >&3 && cat <&3 | grep -q 'UP'"]
-      interval: 15s
-      timeout: 10s
-      retries: 20
-    networks: [ctm-net]
-
   # ??? M2: Collaboration Engine ?????????????????????????????????????????????????
   collab-service:
     build:
@@ -176,15 +147,14 @@ services:
       DB_URL: postgresql://ctm:ctm_dev_pass@postgres:5432/ctm
       REDIS_URL: redis://redis:6379
       KAFKA_BROKERS: kafka:9092
-      KEYCLOAK_JWKS_URI: http://keycloak:8080/realms/ctm/protocol/openid-connect/certs
-      KEYCLOAK_ISSUER: http://keycloak:8080/realms/ctm
+      JWT_SECRET: dev_jwt_secret_32bytes_here!!!!!
+      JWT_ISSUER: http://localhost/
     ports:
       - "1234:1234"
     depends_on:
       postgres: { condition: service_healthy }
       redis: { condition: service_healthy }
       kafka: { condition: service_healthy }
-      keycloak: { condition: service_healthy }
     networks: [ctm-net]
 
   # ??? M3+M4: API Gateway + Formula Engine ?????????????????????????????????????
@@ -199,8 +169,8 @@ services:
       DB_PRIMARY_URL: postgresql://ctm:ctm_dev_pass@postgres:5432/ctm
       REDIS_URL: redis://redis:6379
       KAFKA_BROKERS: kafka:9092
-      KEYCLOAK_JWKS_URI: http://keycloak:8080/realms/ctm/protocol/openid-connect/certs
-      KEYCLOAK_ISSUER: http://keycloak:8080/realms/ctm
+      JWT_SECRET: dev_jwt_secret_32bytes_here!!!!!
+      JWT_ISSUER: http://localhost/
       PM_GRPC_HOST: pm-service:50051
       AI_SERVICE_URL: http://ai-service:8001
       MESSAGING_SERVICE_URL: http://messaging-service:3002
@@ -283,8 +253,8 @@ services:
       DB_URL: postgresql://ctm:ctm_dev_pass@postgres:5432/ctm
       REDIS_URL: redis://redis:6379
       KAFKA_BROKERS: kafka:9092
-      KEYCLOAK_JWKS_URI: http://keycloak:8080/realms/ctm/protocol/openid-connect/certs
-      KEYCLOAK_ISSUER: http://keycloak:8080/realms/ctm
+      JWT_SECRET: dev_jwt_secret_32bytes_here!!!!!
+      JWT_ISSUER: http://localhost/
       RESEND_API_KEY: ${RESEND_API_KEY:-}
     ports:
       - "3002:3002"
@@ -302,13 +272,13 @@ services:
       target: development
     container_name: ctm-frontend
     environment:
+      CI: "true"
       NEXT_PUBLIC_API_URL: http://localhost:3001
-      NEXT_PUBLIC_COLLAB_URL: ws://localhost:1234
-      NEXT_PUBLIC_CHAT_URL: ws://localhost:3002
+      NEXT_PUBLIC_COLLAB_URL: ws://collab-service:1234
+      NEXT_PUBLIC_CHAT_URL: ws://messaging-service:3002
       NEXTAUTH_URL: http://localhost:3000
       NEXTAUTH_SECRET: dev_nextauth_secret_32bytes_here
-      KEYCLOAK_CLIENT_ID: ctm-web
-      KEYCLOAK_ISSUER: http://localhost:8080/realms/ctm
+      AUTH_API_BASE: http://api-service:3001
     ports:
       - "3000:3000"
     depends_on:
@@ -316,9 +286,9 @@ services:
       - collab-service
       - messaging-service
     volumes:
-      - ./apps/frontend:/app
+      - .:/app
       - /app/node_modules
-      - /app/.next
+      - /app/apps/frontend/.next
     networks: [ctm-net]
 
 

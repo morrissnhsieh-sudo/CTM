@@ -13,7 +13,7 @@ COPY apps/api-service/src/ ./apps/api-service/src/
 
 RUN pnpm install --frozen-lockfile
 RUN pnpm -F @ctm/shared-types build
-RUN cd apps/api-service && ../../node_modules/.bin/tsc --noEmitOnError false || true
+RUN pnpm -C apps/api-service build
 
 WORKDIR /app/apps/api-service
 EXPOSE 3001

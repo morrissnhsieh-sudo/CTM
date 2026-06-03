@@ -27,9 +27,11 @@ export const dbPlugin = fp(async (app) => {
 
   // Inject RLS context on every connection checkout
   const setRlsContext = (pool: pg.Pool) => {
-    const original = pool.connect.bind(pool)
-    pool.connect = async (...args: Parameters<typeof pool.connect>) => {
-      const client = await original(...args)
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const original = (pool as any).connect.bind(pool) as typeof pool.connect
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    (pool as any).connect = async (...args: any[]) => {
+      const client = await (original as (...a: unknown[]) => Promise<pg.PoolClient>)(...args)
       return client
     }
   }

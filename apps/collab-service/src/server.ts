@@ -4,7 +4,7 @@ import * as Y from 'yjs'
 import pg from 'pg'
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 type RedisClient = any
-import { createRemoteJWKSet, jwtVerify } from 'jose'
+import { jwtVerify } from 'jose'
 import { Kafka, type Producer } from 'kafkajs'
 import { env } from './env.js'
 import { logger } from './logger.js'
@@ -20,9 +20,7 @@ interface AuthData {
   sheetId: string
 }
 
-const JWKS = createRemoteJWKSet(new URL(env.KEYCLOAK_JWKS_URI), {
-  cooldownDuration: 300_000,
-})
+const JWT_SECRET = new TextEncoder().encode(env.JWT_SECRET)
 
 export async function createServer() {
   const pool = new pg.Pool({ connectionString: env.DB_URL, max: 10 })
@@ -53,8 +51,9 @@ export async function createServer() {
       const sheetId = documentName
 
       try {
-        const { payload } = await jwtVerify(token, JWKS, {
-          issuer: env.KEYCLOAK_ISSUER,
+        const { payload } = await jwtVerify(token, JWT_SECRET, {
+          issuer: env.JWT_ISSUER,
+          algorithms: ['HS256'],
         })
 
         const userId = payload.sub as string

@@ -16,9 +16,9 @@ const EnvSchema = z.object({
   KAFKA_BROKERS: z.string().default('localhost:9092'),
   KAFKA_CLIENT_ID: z.string().default('api-service'),
 
-  // Auth — Keycloak JWKS
-  KEYCLOAK_ISSUER: z.string().url(),
-  KEYCLOAK_JWKS_URI: z.string().url(),
+  // Auth — local JWT signing
+  JWT_SECRET: z.string().min(32),
+  JWT_ISSUER: z.string().url().default('http://localhost/'),
 
   // Internal service URLs
   PM_GRPC_HOST: z.string().default('pm-service:50051'),

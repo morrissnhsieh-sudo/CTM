@@ -62,6 +62,7 @@ export const copyRouter: FastifyPluginAsync = async (app) => {
 
       // ── 3. Create new sheet ────────────────────────────────────────────────
       const newSheetId = uuid()
+      // @ts-ignore -- Drizzle v0.41: .default() columns excluded from insert type
       const [newSheet] = await tx.insert(sheets).values({
         id:          newSheetId,
         workspaceId: targetWorkspaceId,

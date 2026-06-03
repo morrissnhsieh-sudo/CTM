@@ -10,11 +10,10 @@ COPY apps/frontend/package.json ./apps/frontend/
 RUN pnpm install --frozen-lockfile
 
 # ─── Development ─────────────────────────────────────────────
-FROM deps AS development
-COPY . .
-WORKDIR /app/apps/frontend
+FROM base AS development
+WORKDIR /app
 EXPOSE 3000
-CMD ["pnpm", "dev"]
+CMD ["sh", "-c", "pnpm install && pnpm --filter @ctm/frontend dev"]
 
 # ─── Production build ─────────────────────────────────────────
 FROM deps AS builder

@@ -1,67 +1,93 @@
 import NextAuth from 'next-auth'
-import Keycloak from 'next-auth/providers/keycloak'
+import CredentialsProvider from 'next-auth/providers/credentials'
+
+const authApiBase = process.env['AUTH_API_BASE'] ?? process.env['NEXT_PUBLIC_API_URL'] ?? 'http://localhost:3001'
 
 export const { handlers, auth, signIn, signOut } = NextAuth({
   providers: [
-    Keycloak({
-      clientId: process.env['KEYCLOAK_CLIENT_ID'] ?? 'ctm-web',
-      clientSecret: '',  // public PKCE client — no secret
-      issuer: process.env['KEYCLOAK_ISSUER'],
+    CredentialsProvider({
+      id: 'credentials',
+      name: 'Email',
+      credentials: {
+        email: { label: 'Email', type: 'email' },
+        password: { label: 'Password', type: 'password' },
+      },
+      async authorize(credentials) {
+        if (!credentials?.email || !credentials?.password) {
+          return null
+        }
+
+        let response: Response
+        try {
+          response = await fetch(`${authApiBase}/v1/auth/login`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              email: credentials.email,
+              password: credentials.password,
+            }),
+          })
+        } catch (err) {
+          console.error('[auth] fetch failed — is api-service reachable?', authApiBase, err)
+          return null
+        }
+
+        if (!response.ok) {
+          const body = await response.text().catch(() => '')
+          console.error('[auth] login rejected', response.status, body)
+          return null
+        }
+
+        const payload = await response.json() as {
+          data?: {
+            token: string
+            user: {
+              id: string
+              email: string
+              name: string
+              role: string
+              workspaceId: string
+            }
+          }
+        }
+
+        if (!payload.data?.token || !payload.data?.user) {
+          return null
+        }
+
+        return {
+          id: payload.data.user.id,
+          email: payload.data.user.email,
+          name: payload.data.user.name,
+          accessToken: payload.data.token,
+          role: payload.data.user.role,
+          workspaceId: payload.data.user.workspaceId,
+        }
+      },
     }),
   ],
   session: { strategy: 'jwt' },
+  secret: process.env['NEXTAUTH_SECRET'],
   callbacks: {
-    async jwt({ token, account }) {
-      // Persist the Keycloak access_token and refresh_token on first sign-in
-      if (account) {
-        token['access_token'] = account.access_token
-        token['refresh_token'] = account.refresh_token
-        token['expires_at'] = account.expires_at
-        token['workspace_id'] = (account as Record<string, unknown>)['workspace_id'] ?? ''
-        token['role'] = (account as Record<string, unknown>)['role'] ?? 'VIEWER'
+    async jwt({ token, user }) {
+      if (user) {
+        token.sub = user.id
+        token.email = user.email
+        token.name = user.name
+        token.accessToken = user.accessToken
+        token.role = user.role
+        token.workspaceId = user.workspaceId
       }
-
-      // Proactive access token refresh if expiring in < 60s
-      const expiresAt = token['expires_at'] as number | undefined
-      if (expiresAt && Date.now() / 1000 > expiresAt - 60) {
-        try {
-          const issuer = process.env['KEYCLOAK_ISSUER']
-          const response = await fetch(`${issuer}/protocol/openid-connect/token`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-            body: new URLSearchParams({
-              grant_type: 'refresh_token',
-              client_id: process.env['KEYCLOAK_CLIENT_ID'] ?? 'ctm-web',
-              refresh_token: token['refresh_token'] as string,
-            }),
-          })
-
-          const tokens = await response.json() as {
-            access_token?: string
-            refresh_token?: string
-            expires_in?: number
-          }
-
-          if (!response.ok) throw tokens
-
-          token['access_token'] = tokens.access_token
-          token['refresh_token'] = tokens.refresh_token ?? token['refresh_token']
-          token['expires_at'] = Math.floor(Date.now() / 1000) + (tokens.expires_in ?? 900)
-        } catch (error) {
-          console.error('Token refresh failed:', error)
-          token['error'] = 'RefreshAccessTokenError'
-        }
-      }
-
       return token
     },
 
     async session({ session, token }) {
       session.user.id = token.sub ?? ''
-      ;(session as Record<string, unknown>)['accessToken'] = token['access_token']
-      ;(session as Record<string, unknown>)['workspaceId'] = token['workspace_id']
-      ;(session as Record<string, unknown>)['role'] = token['role']
-      ;(session as Record<string, unknown>)['error'] = token['error']
+      session.user.email = token.email as string
+      session.user.name = token.name as string
+      ;(session as Record<string, unknown>)['accessToken'] = token.accessToken
+      ;(session as Record<string, unknown>)['workspaceId'] = token.workspaceId
+      ;(session as Record<string, unknown>)['role'] = token.role
       return session
     },
   },

@@ -15,6 +15,7 @@ CREATE SCHEMA IF NOT EXISTS collab;
 CREATE SCHEMA IF NOT EXISTS pm;
 CREATE SCHEMA IF NOT EXISTS ai;
 CREATE SCHEMA IF NOT EXISTS audit;
+CREATE SCHEMA IF NOT EXISTS keycloak;
 
 -- ─── Workspaces ─────────────────────────────────────────────
 CREATE TABLE workspaces (
@@ -32,6 +33,7 @@ CREATE TABLE users (
   id              UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   workspace_id    UUID NOT NULL REFERENCES workspaces(id) ON DELETE CASCADE,
   email           TEXT NOT NULL,
+  password_hash   TEXT,
   name            TEXT NOT NULL,
   avatar_url      TEXT,
   role            TEXT NOT NULL DEFAULT 'VIEWER'

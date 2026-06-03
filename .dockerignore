@@ -1,0 +1,13 @@
+# Exclude local dependency folders and build artifacts
+**/node_modules
+node_modules
+**/.pnpm-store
+**/.npm
+**/.cache
+**/dist
+**/.next
+**/.turbo
+**/.git
+.git
+*.log
+.DS_Store

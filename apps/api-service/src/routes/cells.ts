@@ -44,16 +44,19 @@ export const cellsRouter: FastifyPluginAsync = async (app) => {
       formulaDiff = await app.formulaEngine.setCellContents(sheetId, rowId, colId, strValue)
     }
 
+    const computedValue = isFormula
+      ? (formulaDiff?.[0]?.newValue != null ? String(formulaDiff[0].newValue) : undefined)
+      : (strValue ?? undefined)
+
     const [updated] = await withRls(app.db, request, async (tx) =>
       tx.insert(cells)
         .values({
           rowId,
           colId,
-          value: isFormula ? (formulaDiff?.[0]?.newValue != null ? String(formulaDiff[0].newValue) : null) : strValue,
-          formula: isFormula ? strValue : null,
-          format: body.format ?? {},
+          ...(computedValue !== undefined && { value: computedValue }),
+          ...(isFormula && strValue && { formula: strValue }),
+          ...(body.format !== undefined && { format: body.format }),
           updatedBy: request.ctx.userId,
-          updatedAt: new Date(),
         })
         .onConflictDoUpdate({
           target: [cells.rowId, cells.colId],
@@ -63,7 +66,7 @@ export const cellsRouter: FastifyPluginAsync = async (app) => {
             ...(body.format !== undefined && { format: body.format }),
             updatedBy: request.ctx.userId,
             updatedAt: new Date(),
-          },
+          } as any,
         })
         .returning(),
     )

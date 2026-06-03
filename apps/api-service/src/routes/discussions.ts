@@ -101,7 +101,7 @@ export const discussionsRouter: FastifyPluginAsync = async (app) => {
         id:          uuid(),
         workspaceId: request.ctx.workspaceId,
         sheetId,
-        title:       body.title ?? null,
+        ...(body.title !== undefined && { title: body.title }),
         authorId:    request.ctx.userId,
         body:        body.body,
       }).returning()
@@ -173,7 +173,7 @@ export const discussionsRouter: FastifyPluginAsync = async (app) => {
           ...(body.title !== undefined && { title: body.title }),
           ...(body.body  !== undefined && { body: body.body }),
           updatedAt: new Date(),
-        })
+        } as any)
         .where(eq(discussions.id, discussionId))
         .returning()
 
@@ -214,6 +214,7 @@ export const discussionsRouter: FastifyPluginAsync = async (app) => {
       if (!canDelete) return 'forbidden' as const
 
       await tx.update(discussions)
+        // @ts-ignore -- Drizzle v0.41: PgUpdateSetSource excludes defaulted/nullable columns
         .set({ deletedAt: new Date() })
         .where(eq(discussions.id, discussionId))
 
@@ -252,7 +253,7 @@ export const discussionsRouter: FastifyPluginAsync = async (app) => {
           resolvedBy: !reopen ? request.ctx.userId : null,
           resolvedAt: !reopen ? new Date() : null,
           updatedAt:  new Date(),
-        })
+        } as any)
         .where(and(
           eq(discussions.id, discussionId),
           eq(discussions.sheetId, sheetId),
@@ -301,6 +302,7 @@ export const discussionsRouter: FastifyPluginAsync = async (app) => {
 
       // Touch parent updatedAt so it sorts to top
       await tx.update(discussions)
+        // @ts-ignore -- Drizzle v0.41: PgUpdateSetSource excludes defaulted/nullable columns
         .set({ updatedAt: new Date() })
         .where(eq(discussions.id, discussionId))
 
@@ -337,6 +339,7 @@ export const discussionsRouter: FastifyPluginAsync = async (app) => {
       if (!canDelete) return 'forbidden' as const
 
       await tx.update(discussionComments)
+        // @ts-ignore -- Drizzle v0.41: PgUpdateSetSource excludes defaulted/nullable columns
         .set({ deletedAt: new Date() })
         .where(eq(discussionComments.id, commentId))
 

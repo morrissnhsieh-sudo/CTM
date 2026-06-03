@@ -1,10 +1,6 @@
 import type { NextConfig } from 'next'
 
 const nextConfig: NextConfig = {
-  experimental: {
-    ppr: true,               // Partial Pre-rendering
-    reactCompiler: true,
-  },
   images: {
     remotePatterns: [
       { protocol: 'https', hostname: '**.ctm.app' },
