@@ -26,7 +26,8 @@ import {
   Cloud,
   Users,
   HelpCircle,
-  Sparkles
+  Sparkles,
+  Paperclip,
 } from 'lucide-react'
 import { useParams, useRouter } from 'next/navigation'
 import { useState, useRef, useEffect } from 'react'
@@ -66,6 +67,8 @@ export function SheetToolbar() {
     setHighlightChangesTimeframe,
     leftSidebarOpen,
     toggleLeftSidebar,
+    attachmentsPanelOpen,
+    toggleAttachmentsPanel,
   } = useUIStore()
   const params = useParams()
   const router = useRouter()
@@ -618,6 +621,11 @@ export function SheetToolbar() {
                       <span>AI Copilot Panel</span>
                       <span className="text-[10px] text-muted-foreground">{rightPanelOpen ? "Visible" : "Hidden"}</span>
                     </button>
+
+                    <button onClick={() => { toggleAttachmentsPanel(); setActiveMenu(null) }} className="w-full px-3 py-1.5 text-left hover:bg-accent flex items-center justify-between border-b border-border/50 pb-2 mb-1">
+                      <span>Attachments Panel</span>
+                      <span className="text-[10px] text-muted-foreground">{attachmentsPanelOpen ? "Visible" : "Hidden"}</span>
+                    </button>
                     
                     <button onClick={() => { setHighlightChangesEnabled(!highlightChangesEnabled); setActiveMenu(null) }} className="w-full px-3 py-1.5 text-left hover:bg-accent flex items-center justify-between">
                       <span>Highlight Changes</span>
@@ -749,6 +757,20 @@ export function SheetToolbar() {
           >
             <Users size={13} />
             <span>Share</span>
+          </button>
+          
+          {/* Attachments Toggle */}
+          <button
+            onClick={toggleAttachmentsPanel}
+            className={cn(
+              'h-7 px-2.5 rounded text-xs transition-colors font-medium border border-border flex items-center gap-1.5',
+              attachmentsPanelOpen
+                ? 'bg-primary text-primary-foreground border-transparent'
+                : 'text-muted-foreground hover:bg-accent bg-transparent',
+            )}
+          >
+            <Paperclip size={13} />
+            <span>Files</span>
           </button>
           
           {/* AI Panel Toggle */}

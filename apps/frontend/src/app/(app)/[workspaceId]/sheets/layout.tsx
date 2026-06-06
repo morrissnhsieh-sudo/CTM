@@ -7,6 +7,7 @@ import { ViewPicker } from '@/components/grid/ViewPicker'
 import { useUIStore } from '@/store/uiStore'
 import { AiPanel } from '@/components/ai/AiPanel'
 import { SidebarExplorer } from '@/components/navigation/SidebarExplorer'
+import { AttachmentsPanel } from '@/components/grid/AttachmentsPanel'
 
 export default function SheetLayout({
   children,
@@ -16,7 +17,13 @@ export default function SheetLayout({
   const params = useParams()
   const workspaceId = params?.workspaceId as string
   const sheetId = params?.sheetId as string
-  const { rightPanelOpen, toggleRightPanel, leftSidebarOpen } = useUIStore()
+  const { 
+    rightPanelOpen, 
+    toggleRightPanel, 
+    leftSidebarOpen, 
+    attachmentsPanelOpen, 
+    toggleAttachmentsPanel 
+  } = useUIStore()
 
   return (
     <div className="flex flex-col h-screen overflow-hidden bg-background">
@@ -31,6 +38,11 @@ export default function SheetLayout({
         <main className="flex-1 overflow-hidden relative">
           {children}
         </main>
+        {attachmentsPanelOpen && (
+          <aside className="w-72 border-l border-border overflow-hidden flex-shrink-0">
+            <AttachmentsPanel sheetId={sheetId} onClose={toggleAttachmentsPanel} />
+          </aside>
+        )}
         {rightPanelOpen && (
           <aside className="w-80 border-l border-border overflow-hidden flex-shrink-0">
             <AiPanel sheetId={sheetId} onClose={toggleRightPanel} />

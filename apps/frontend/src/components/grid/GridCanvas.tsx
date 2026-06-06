@@ -84,10 +84,66 @@ export function GridCanvas({ sheetId, columns = [], rowCount = 1000 }: GridCanva
   const { collaborators, userId } = useUserStore()
   const { accessToken: authToken, user } = useAuthStore()
   const { doc, provider } = useCollabProvider(sheetId)
-  const { viewMode, highlightChangesEnabled, highlightChangesTimeframe } = useUIStore()
+  const { 
+    viewMode, 
+    highlightChangesEnabled, 
+    highlightChangesTimeframe,
+    toggleAttachmentsPanel,
+    attachmentsPanelOpen
+  } = useUIStore()
 
   const authWorkspaceId = user?.workspaceId ?? ''
   const [viewport, setViewport] = useState({ w: 0, h: 0 })
+  const [rowAttachments, setRowAttachments] = useState<Map<string, any[]>>(new Map())
+  const [sheetAttachments, setSheetAttachments] = useState<any[]>([])
+  const [rowIdMap, setRowIdMap] = useState<string[]>([])
+
+  // Fetch sheet attachments
+  useEffect(() => {
+    if (isTransitioning || !authToken || !authWorkspaceId) return
+    api.attachments.list({ scope: 'sheet', sheetId }, { accessToken: authToken, workspaceId: authWorkspaceId })
+      .then(res => {
+        if (res && res.data && Array.isArray(res.data)) {
+          setSheetAttachments(res.data)
+          dirtyRef.current = true
+        }
+      })
+      .catch(err => console.error("Failed to fetch sheet attachments:", err))
+  }, [sheetId, isTransitioning, authToken, authWorkspaceId])
+
+  // Fetch row IDs mapping
+  useEffect(() => {
+    if (isTransitioning || !authToken || !authWorkspaceId) return
+    api.rows.list(sheetId, { accessToken: authToken, workspaceId: authWorkspaceId, pageSize: 1000 })
+      .then(res => {
+        if (res && (res as any).data) {
+          const rows = (res as any).data as any[]
+          setRowIdMap(rows.map(r => r.id))
+        }
+      })
+      .catch(err => console.error("Failed to fetch row IDs:", err))
+  }, [sheetId, isTransitioning, authToken, authWorkspaceId])
+
+  // Fetch row attachments
+  useEffect(() => {
+    if (isTransitioning || !authToken || !authWorkspaceId) return
+    api.attachments.list({ scope: 'row', sheetId }, { accessToken: authToken, workspaceId: authWorkspaceId })
+      .then(res => {
+        const m = new Map<string, any[]>()
+        if (res && res.data && Array.isArray(res.data)) {
+          res.data.forEach(a => {
+            if (a.rowId) {
+              const list = m.get(a.rowId) || []
+              list.push(a)
+              m.set(a.rowId, list)
+            }
+          })
+        }
+        setRowAttachments(m)
+        dirtyRef.current = true
+      })
+      .catch(err => console.error("Failed to fetch attachments:", err))
+  }, [sheetId, isTransitioning, authToken, authWorkspaceId])
 
   // 3. Derived layout helpers (useCallback/useMemo)
   const getX = useCallback((col: number): number => {
@@ -259,6 +315,48 @@ export function GridCanvas({ sheetId, columns = [], rowCount = 1000 }: GridCanva
     }
   }, [store, doc, indentRow, outdentRow])
 
+  const handleMouseMove = useCallback((e: React.MouseEvent<HTMLCanvasElement>) => {
+    const canvas = canvasElementRef.current
+    if (!canvas) return
+    const rect = canvas.getBoundingClientRect()
+    const x = e.clientX - rect.left
+    const y = e.clientY - rect.top
+
+    let cursor = 'default'
+
+    if (y < HEADER_HEIGHT && x < ROW_NUM_WIDTH) {
+      if (sheetAttachments.length > 0) cursor = 'pointer'
+    } else if (x < ROW_NUM_WIDTH && y >= HEADER_HEIGHT) {
+      const row = Math.max(0, Math.floor((y - HEADER_HEIGHT + store.scrollTop) / DEFAULT_ROW_HEIGHT))
+      const absRow = store.visibleRows[row] ?? row
+      const rowId = rowIdMap[absRow]
+      if (rowId && rowAttachments.has(rowId)) cursor = 'pointer'
+    } else if (y >= HEADER_HEIGHT && x >= ROW_NUM_WIDTH) {
+      let col = 0, cx = ROW_NUM_WIDTH - store.scrollLeft
+      while (col < columns.length) {
+        const w = store.colWidths.get(col) ?? DEFAULT_COL_WIDTH
+        if (cx + w > x) break
+        cx += w; col++
+      }
+      if (columns[col]?.type === 'attachment') {
+        const totalVisibleRows = store.visibleRows.length || rowCount
+        let row = 0, ry = HEADER_HEIGHT - store.scrollTop
+        while (row < totalVisibleRows) {
+          const h = store.rowHeights.get(row) ?? DEFAULT_ROW_HEIGHT
+          if (ry + h > y) break
+          ry += h; row++
+        }
+        const absRow = store.visibleRows[row] ?? row
+        const val = store.cellCache.get(getCellKey(absRow, col))
+        if (val != null && val !== '') cursor = 'pointer'
+      }
+    }
+
+    if (canvas.style.cursor !== cursor) {
+      canvas.style.cursor = cursor
+    }
+  }, [sheetAttachments.length, rowIdMap, rowAttachments, store, columns, rowCount])
+
   const handleMouseDown = useCallback((e: React.MouseEvent<HTMLCanvasElement>) => {
     const canvas = canvasElementRef.current
     if (!canvas) return
@@ -266,9 +364,24 @@ export function GridCanvas({ sheetId, columns = [], rowCount = 1000 }: GridCanva
     const x = e.clientX - rect.left
     const y = e.clientY - rect.top
 
-    if (y < HEADER_HEIGHT || x < ROW_NUM_WIDTH) return
+    if (y < HEADER_HEIGHT && x < ROW_NUM_WIDTH) {
+      if (sheetAttachments.length > 0) {
+        toggleAttachmentsPanel()
+      }
+      return
+    }
 
-    // Find clicked cell
+    if (y < HEADER_HEIGHT || x < ROW_NUM_WIDTH) {
+      if (x < ROW_NUM_WIDTH) {
+        const row = Math.max(0, Math.floor((y - HEADER_HEIGHT + store.scrollTop) / DEFAULT_ROW_HEIGHT))
+        const absRow = store.visibleRows[row] ?? row
+        const rowId = rowIdMap[absRow]
+        if (rowId && rowAttachments.has(rowId)) {
+          toggleAttachmentsPanel()
+        }
+      }
+      return
+    }
     let col = 0, cx = ROW_NUM_WIDTH - store.scrollLeft
     while (col < columns.length) {
       const w = store.colWidths.get(col) ?? DEFAULT_COL_WIDTH
@@ -285,6 +398,14 @@ export function GridCanvas({ sheetId, columns = [], rowCount = 1000 }: GridCanva
     }
 
     const absRow = store.visibleRows[row] ?? row
+
+    if (columns[col]?.type === 'attachment') {
+      const val = store.cellCache.get(getCellKey(absRow, col))
+      if (val != null && val !== '') {
+        toggleAttachmentsPanel()
+        return
+      }
+    }
 
     if (col === 0) {
       const meta = store.rowMetadata.get(`r${absRow}`)
@@ -427,13 +548,35 @@ export function GridCanvas({ sheetId, columns = [], rowCount = 1000 }: GridCanva
       const y = getY(row)
       const h = store.rowHeights.get(row) ?? DEFAULT_ROW_HEIGHT
       if (y + h < HEADER_HEIGHT) continue
+
+      // Draw row number
+      ctx.font = FONT
+      ctx.fillStyle = colors.headerText
+      ctx.textAlign = 'right'
       ctx.fillText(String(row + 1), ROW_NUM_WIDTH - 6, y + h / 2)
+
+      // Draw attachment icon if row has attachments
+      const absRow = store.visibleRows[row] ?? row
+      const rowId = rowIdMap[absRow]
+      if (rowId && rowAttachments.has(rowId)) {
+        ctx.font = '10px Inter, system-ui, sans-serif'
+        ctx.textAlign = 'left'
+        ctx.fillText('📎', 4, y + h / 2)
+      }
     }
 
     ctx.fillStyle = colors.headerBg
     ctx.fillRect(0, 0, W, HEADER_HEIGHT)
     ctx.fillStyle = colors.rowNumBg
     ctx.fillRect(0, 0, ROW_NUM_WIDTH, HEADER_HEIGHT)
+
+    if (sheetAttachments.length > 0) {
+      ctx.font = '12px Inter, system-ui, sans-serif'
+      ctx.fillStyle = colors.headerText
+      ctx.textAlign = 'center'
+      ctx.fillText('📎', ROW_NUM_WIDTH / 2, HEADER_HEIGHT / 2)
+    }
+
     ctx.font = FONT_BOLD
     ctx.fillStyle = colors.headerText
     ctx.textAlign = 'center'
@@ -526,7 +669,32 @@ export function GridCanvas({ sheetId, columns = [], rowCount = 1000 }: GridCanva
 
         if (val != null && val !== '') {
           const text = String(val)
-          ctx.fillStyle = (format as any)?.fontColor ?? condFontColor ?? colors.cellText
+          const colType = columns[col]?.type
+
+          // Specialized rendering for certain column types
+          if (colType === 'attachment') {
+            ctx.fillStyle = isDark ? '#2563eb' : '#3b82f6'
+            ctx.font = '12px Inter, system-ui, sans-serif'
+            ctx.textAlign = 'left'
+            const displayValue = text.length > 20 ? text.slice(0, 17) + '...' : text
+            ctx.fillText('📎 ' + displayValue, x + 6, y + rowH / 2, colW - 12)
+            continue
+          }
+
+          if (colType === 'checkbox') {
+            const checked = text === 'true' || text === '1'
+            ctx.font = '14px Inter, system-ui, sans-serif'
+            ctx.fillStyle = checked ? '#3b82f6' : colors.gridLine
+            ctx.textAlign = 'center'
+            ctx.fillText(checked ? '☑' : '☐', x + colW / 2, y + rowH / 2)
+            continue
+          }
+
+          let cellFontColor = (format as any)?.fontColor ?? condFontColor ?? colors.cellText
+          if (colType === 'url') {
+            cellFontColor = '#3b82f6'
+          }
+          ctx.fillStyle = cellFontColor
           const isBold = format?.bold || condBold
           const isItalic = format?.italic || condItalic
           let fontStr = FONT
@@ -689,6 +857,7 @@ export function GridCanvas({ sheetId, columns = [], rowCount = 1000 }: GridCanva
                 ref={canvasRef}
                 className="grid-canvas pointer-events-auto block w-full h-full"
                 onMouseDown={handleMouseDown}
+                onMouseMove={handleMouseMove}
               />
               {store.isEditing && store.activeCell && (
                 <div className="absolute inset-0 pointer-events-none">

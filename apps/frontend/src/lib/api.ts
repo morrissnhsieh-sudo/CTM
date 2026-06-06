@@ -142,6 +142,36 @@ export const api = {
       }),
   },
 
+  attachments: {
+    list: (query: { scope?: 'row' | 'sheet' | 'workspace'; rowId?: string; sheetId?: string }, opts: { accessToken: string; workspaceId: string }) => {
+      const params = new URLSearchParams()
+      if (query.scope) params.append('scope', query.scope)
+      if (query.rowId) params.append('rowId', query.rowId)
+      if (query.sheetId) params.append('sheetId', query.sheetId)
+      const qs = params.toString()
+      return request<{ data: any[] }>(qs ? `/attachments?${qs}` : '/attachments', opts)
+    },
+    presign: (body: { filename: string; mimeType: string; sizeBytes: number; scope: 'row' | 'sheet' | 'workspace'; rowId?: string | null; sheetId?: string | null }, opts: { accessToken: string; workspaceId: string }) =>
+      request<{ data: { attachment: any; presignedUrl: string; s3Key: string } }>('/attachments/presign', {
+        method: 'POST',
+        body: JSON.stringify(body),
+        ...opts,
+      }),
+    confirm: (attachmentId: string, opts: { accessToken: string; workspaceId: string }) =>
+      request<{ data: any }>('/attachments/confirm', {
+        method: 'POST',
+        body: JSON.stringify({ attachmentId }),
+        ...opts,
+      }),
+    getDownloadUrl: (id: string, opts: { accessToken: string; workspaceId: string }) =>
+      request<{ data: { url: string; expiresIn: number } }>(`/attachments/${id}/download`, opts),
+    delete: (id: string, opts: { accessToken: string; workspaceId: string }) =>
+      request<void>(`/attachments/${id}`, {
+        method: 'DELETE',
+        ...opts,
+      }),
+  },
+
   folders: {
     list: (opts: { accessToken: string; workspaceId: string }) =>
       request<{ data: import('@ctm/shared-types').Folder[] }>('/folders', opts),
@@ -228,11 +258,18 @@ export const api = {
   },
 
   rows: {
-    list: (sheetId: string, opts: { accessToken: string; workspaceId: string }) =>
-      request<{ data: (import('@ctm/shared-types').Row & { cells: import('@ctm/shared-types').Cell[] })[] }>(
-        `/sheets/${sheetId}/rows`,
-        opts,
-      ),
+    list: (sheetId: string, opts: { accessToken: string; workspaceId: string, page?: number, pageSize?: number, cursor?: string }) => {
+      const { accessToken, workspaceId, ...query } = opts
+      const params = new URLSearchParams()
+      if (query.page) params.append('page', String(query.page))
+      if (query.pageSize) params.append('pageSize', String(query.pageSize))
+      if (query.cursor) params.append('cursor', query.cursor)
+      const qs = params.toString()
+      return request<{ data: (import('@ctm/shared-types').Row & { cells: import('@ctm/shared-types').Cell[] })[] }>(
+        qs ? `/sheets/${sheetId}/rows?${qs}` : `/sheets/${sheetId}/rows`,
+        { accessToken, workspaceId },
+      )
+    },
 
     insert: (sheetId: string, rows: import('@ctm/shared-types').RowInsertRequest[], opts: { accessToken: string; workspaceId: string }) =>
       request<{ data: import('@ctm/shared-types').Row[] }>(`/sheets/${sheetId}/rows`, {

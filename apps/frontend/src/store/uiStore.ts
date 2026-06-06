@@ -7,6 +7,7 @@ interface UIState {
   // Panels
   rightPanelOpen: boolean
   rightPanelTab: 'comments' | 'ai' | 'history'
+  attachmentsPanelOpen: boolean
   leftSidebarOpen: boolean
   commandPaletteOpen: boolean
 
@@ -22,6 +23,7 @@ interface UIState {
   // Actions
   toggleRightPanel: () => void
   setRightPanelTab: (tab: UIState['rightPanelTab']) => void
+  toggleAttachmentsPanel: () => void
   toggleLeftSidebar: () => void
   setCommandPalette: (open: boolean) => void
   setViewMode: (mode: ViewMode) => void
@@ -36,6 +38,7 @@ export const useUIStore = create<UIState>()(
     (set) => ({
       rightPanelOpen: false,
       rightPanelTab: 'comments',
+      attachmentsPanelOpen: false,
       leftSidebarOpen: true,
       commandPaletteOpen: false,
       viewMode: 'grid',
@@ -46,6 +49,7 @@ export const useUIStore = create<UIState>()(
 
       toggleRightPanel: () => set((s) => ({ rightPanelOpen: !s.rightPanelOpen })),
       setRightPanelTab: (tab) => set({ rightPanelTab: tab, rightPanelOpen: true }),
+      toggleAttachmentsPanel: () => set((s) => ({ attachmentsPanelOpen: !s.attachmentsPanelOpen })),
       toggleLeftSidebar: () => set((s) => ({ leftSidebarOpen: !s.leftSidebarOpen })),
       setCommandPalette: (open) => set({ commandPaletteOpen: open }),
       setViewMode: (mode) => set({ viewMode: mode }),

@@ -114,16 +114,20 @@ export const attachmentsRouter: FastifyPluginAsync = async (app) => {
     const { scope, rowId, sheetId } = request.query as { scope?: string; rowId?: string; sheetId?: string }
 
     const result = await withRls(app.db, request, async (tx) => {
-      let query = tx.select().from(attachments).$dynamic()
+      let query = tx.select().from(attachments).where(isNull(attachments.deletedAt)).$dynamic()
 
-      if (scope === 'row' && rowId) {
-        query = query.where(and(eq(attachments.scope, 'row'), eq(attachments.rowId, rowId), isNull(attachments.deletedAt)))
+      if (scope === 'row') {
+        query = query.where(eq(attachments.scope, 'row'))
+        if (rowId) query = query.where(eq(attachments.rowId, rowId))
+        if (sheetId) query = query.where(eq(attachments.sheetId, sheetId))
       } else if (scope === 'sheet' && sheetId) {
-        query = query.where(and(eq(attachments.scope, 'sheet'), eq(attachments.sheetId, sheetId), isNull(attachments.deletedAt)))
+        query = query.where(and(eq(attachments.scope, 'sheet'), eq(attachments.sheetId, sheetId)))
       } else if (scope === 'workspace') {
-        query = query.where(and(eq(attachments.scope, 'workspace'), eq(attachments.workspaceId, request.ctx.workspaceId), isNull(attachments.deletedAt)))
+        query = query.where(and(eq(attachments.scope, 'workspace'), eq(attachments.workspaceId, request.ctx.workspaceId)))
       } else {
-        query = query.where(and(eq(attachments.workspaceId, request.ctx.workspaceId), isNull(attachments.deletedAt)))
+        // Default: filter by workspace, and optionally sheetId
+        query = query.where(eq(attachments.workspaceId, request.ctx.workspaceId))
+        if (sheetId) query = query.where(eq(attachments.sheetId, sheetId))
       }
 
       return query
