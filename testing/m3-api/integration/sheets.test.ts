@@ -170,3 +170,39 @@ describe('M3 Default columns created with new sheet', () => {
     expect(statusOptions.every((o) => o.color.startsWith('#'))).toBe(true)
   })
 })
+
+// ── Public Sharing Validation ──────────────────────────────────────────────────
+describe('M3 Public Sharing Validation', () => {
+  const PublicShareBody = z.object({
+    visibleColIds: z.array(z.string().uuid()).optional().nullable(),
+    expiresAt: z.string().datetime().optional().nullable(),
+  })
+
+  it('accepts empty share body', () => {
+    const result = PublicShareBody.safeParse({})
+    expect(result.success).toBe(true)
+  })
+
+  it('accepts valid visibleColIds and expiresAt', () => {
+    const result = PublicShareBody.safeParse({
+      visibleColIds: ['550e8400-e29b-41d4-a716-446655440000'],
+      expiresAt: '2026-12-31T23:59:59Z',
+    })
+    expect(result.success).toBe(true)
+  })
+
+  it('rejects invalid visibleColIds', () => {
+    const result = PublicShareBody.safeParse({
+      visibleColIds: ['not-a-uuid'],
+    })
+    expect(result.success).toBe(false)
+  })
+
+  it('rejects invalid expiresAt datetime format', () => {
+    const result = PublicShareBody.safeParse({
+      expiresAt: '2026-12-31',
+    })
+    expect(result.success).toBe(false)
+  })
+})
+

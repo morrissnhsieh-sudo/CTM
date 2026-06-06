@@ -127,14 +127,35 @@ func (r *postgresTaskRepository) DeleteTask(ctx context.Context, id string) erro
 func (r *postgresTaskRepository) UpdateCPMResults(ctx context.Context, projectID string, results []*Task) error {
 	for _, t := range results {
 		_, err := r.pool.Exec(ctx,
-			`UPDATE pm.tasks SET is_critical=$2, float_days=$3, updated_at=NOW() WHERE id=$1`,
-			t.ID, t.IsCritical, t.FloatDays,
+			`UPDATE pm.tasks 
+			 SET start_date=$2, end_date=$3, is_critical=$4, float_days=$5, updated_at=NOW() 
+			 WHERE id=$1`,
+			t.ID, t.StartDate, t.EndDate, t.IsCritical, t.FloatDays,
 		)
 		if err != nil {
 			return err
 		}
 	}
 	return nil
+}
+
+func (r *postgresTaskRepository) CreateDependency(ctx context.Context, dep *Dependency) error {
+	_, err := r.pool.Exec(ctx,
+		`INSERT INTO pm.task_dependencies (id, from_task_id, to_task_id, dependency_type, lag_days)
+		 VALUES ($1, $2, $3, $4, $5)`,
+		dep.ID, dep.FromTaskID, dep.ToTaskID, dep.DependencyType, dep.LagDays,
+	)
+	return err
+}
+
+func (r *postgresTaskRepository) DeleteDependency(ctx context.Context, id string) error {
+	_, err := r.pool.Exec(ctx, `DELETE FROM pm.task_dependencies WHERE id = $1`, id)
+	return err
+}
+
+func (r *postgresTaskRepository) ClearTaskDependencies(ctx context.Context, taskID string) error {
+	_, err := r.pool.Exec(ctx, `DELETE FROM pm.task_dependencies WHERE to_task_id = $1`, taskID)
+	return err
 }
 
 // ─── Approval Repository ──────────────────────────────────────────────────────
@@ -262,7 +283,7 @@ func NewProjectRepository(pool *pgxpool.Pool) ProjectRepository {
 
 func (r *postgresProjectRepository) ListWorkspaceProjects(ctx context.Context, workspaceID string) ([]*Project, error) {
 	rows, err := r.pool.Query(ctx,
-		`SELECT id, workspace_id, name, status, start_date, end_date, settings
+		`SELECT id, workspace_id, name, status, start_date, end_date, settings, created_by
 		 FROM pm.projects WHERE workspace_id=$1 ORDER BY created_at`,
 		workspaceID,
 	)
@@ -274,7 +295,30 @@ func (r *postgresProjectRepository) ListWorkspaceProjects(ctx context.Context, w
 	var projects []*Project
 	for rows.Next() {
 		p := &Project{}
-		if err := rows.Scan(&p.ID, &p.WorkspaceID, &p.Name, &p.Status, &p.StartDate, &p.EndDate, &p.Settings); err != nil {
+		if err := rows.Scan(&p.ID, &p.WorkspaceID, &p.Name, &p.Status, &p.StartDate, &p.EndDate, &p.Settings, &p.CreatedBy); err != nil {
+			return nil, err
+		}
+		projects = append(projects, p)
+	}
+
+	return projects, rows.Err()
+}
+
+func (r *postgresProjectRepository) ListOwnedProjects(ctx context.Context, workspaceID, createdBy string) ([]*Project, error) {
+	rows, err := r.pool.Query(ctx,
+		`SELECT id, workspace_id, name, status, start_date, end_date, settings, created_by
+		 FROM pm.projects WHERE workspace_id=$1 AND created_by=$2 ORDER BY created_at`,
+		workspaceID, createdBy,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var projects []*Project
+	for rows.Next() {
+		p := &Project{}
+		if err := rows.Scan(&p.ID, &p.WorkspaceID, &p.Name, &p.Status, &p.StartDate, &p.EndDate, &p.Settings, &p.CreatedBy); err != nil {
 			return nil, err
 		}
 		projects = append(projects, p)
@@ -286,9 +330,9 @@ func (r *postgresProjectRepository) ListWorkspaceProjects(ctx context.Context, w
 func (r *postgresProjectRepository) CreateProject(ctx context.Context, p *Project) error {
 	settingsJSON, _ := json.Marshal(p.Settings)
 	_, err := r.pool.Exec(ctx,
-		`INSERT INTO pm.projects (id, workspace_id, name, status, start_date, end_date, settings)
-		 VALUES ($1,$2,$3,$4,$5,$6,$7)`,
-		p.ID, p.WorkspaceID, p.Name, p.Status, p.StartDate, p.EndDate, settingsJSON,
+		`INSERT INTO pm.projects (id, workspace_id, name, status, start_date, end_date, settings, created_by)
+		 VALUES ($1,$2,$3,$4,$5,$6,$7,$8)`,
+		p.ID, p.WorkspaceID, p.Name, p.Status, p.StartDate, p.EndDate, settingsJSON, p.CreatedBy,
 	)
 	return err
 }
@@ -296,10 +340,10 @@ func (r *postgresProjectRepository) CreateProject(ctx context.Context, p *Projec
 func (r *postgresProjectRepository) GetProject(ctx context.Context, id string) (*Project, error) {
 	p := &Project{}
 	err := r.pool.QueryRow(ctx,
-		`SELECT id, workspace_id, name, status, start_date, end_date, settings
+		`SELECT id, workspace_id, name, status, start_date, end_date, settings, created_by
 		 FROM pm.projects WHERE id=$1`,
 		id,
-	).Scan(&p.ID, &p.WorkspaceID, &p.Name, &p.Status, &p.StartDate, &p.EndDate, &p.Settings)
+	).Scan(&p.ID, &p.WorkspaceID, &p.Name, &p.Status, &p.StartDate, &p.EndDate, &p.Settings, &p.CreatedBy)
 	if err != nil {
 		return nil, fmt.Errorf("getting project: %w", err)
 	}
@@ -349,3 +393,118 @@ func (r *postgresTimeRepository) GetProjectTime(ctx context.Context, projectID s
 	}
 	return *total, nil
 }
+
+// ─── Resource Allocation Repository ──────────────────────────────────────────
+
+type postgresResourceAllocationRepository struct{ pool *pgxpool.Pool }
+
+func NewResourceAllocationRepository(pool *pgxpool.Pool) ResourceAllocationRepository {
+	return &postgresResourceAllocationRepository{pool: pool}
+}
+
+func (r *postgresResourceAllocationRepository) ListProjectAllocations(ctx context.Context, projectID string) ([]*ResourceAllocation, error) {
+	rows, err := r.pool.Query(ctx,
+		`SELECT id, resource_id, project_id, allocation_percent, start_date, end_date, created_at, updated_at
+		 FROM pm.resource_allocations WHERE project_id=$1`,
+		projectID,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var allocs []*ResourceAllocation
+	for rows.Next() {
+		a := &ResourceAllocation{}
+		if err := rows.Scan(&a.ID, &a.ResourceID, &a.ProjectID, &a.AllocationPercent, &a.StartDate, &a.EndDate, &a.CreatedAt, &a.UpdatedAt); err != nil {
+			return nil, err
+		}
+		allocs = append(allocs, a)
+	}
+	return allocs, rows.Err()
+}
+
+func (r *postgresResourceAllocationRepository) ListResourceAllocations(ctx context.Context, resourceID string) ([]*ResourceAllocation, error) {
+	rows, err := r.pool.Query(ctx,
+		`SELECT id, resource_id, project_id, allocation_percent, start_date, end_date, created_at, updated_at
+		 FROM pm.resource_allocations WHERE resource_id=$1`,
+		resourceID,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var allocs []*ResourceAllocation
+	for rows.Next() {
+		a := &ResourceAllocation{}
+		if err := rows.Scan(&a.ID, &a.ResourceID, &a.ProjectID, &a.AllocationPercent, &a.StartDate, &a.EndDate, &a.CreatedAt, &a.UpdatedAt); err != nil {
+			return nil, err
+		}
+		allocs = append(allocs, a)
+	}
+	return allocs, rows.Err()
+}
+
+func (r *postgresResourceAllocationRepository) CreateAllocation(ctx context.Context, a *ResourceAllocation) error {
+	_, err := r.pool.Exec(ctx,
+		`INSERT INTO pm.resource_allocations (id, resource_id, project_id, allocation_percent, start_date, end_date)
+		 VALUES ($1,$2,$3,$4,$5,$6)`,
+		a.ID, a.ResourceID, a.ProjectID, a.AllocationPercent, a.StartDate, a.EndDate,
+	)
+	return err
+}
+
+// ─── Baseline Repository ──────────────────────────────────────────────────────
+
+type postgresBaselineRepository struct{ pool *pgxpool.Pool }
+
+func NewBaselineRepository(pool *pgxpool.Pool) BaselineRepository {
+	return &postgresBaselineRepository{pool: pool}
+}
+
+func (r *postgresBaselineRepository) CreateBaseline(ctx context.Context, b *Baseline) error {
+	_, err := r.pool.Exec(ctx,
+		`INSERT INTO pm.baselines (id, project_id, name, snapshot, created_by)
+		 VALUES ($1,$2,$3,$4,$5)`,
+		b.ID, b.ProjectID, b.Name, b.Snapshot, b.CreatedBy,
+	)
+	return err
+}
+
+func (r *postgresBaselineRepository) ListBaselines(ctx context.Context, projectID string) ([]*Baseline, error) {
+	rows, err := r.pool.Query(ctx,
+		`SELECT id, project_id, name, snapshot, created_by, created_at
+		 FROM pm.baselines WHERE project_id=$1 ORDER BY created_at DESC`,
+		projectID,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var baselines []*Baseline
+	for rows.Next() {
+		b := &Baseline{}
+		if err := rows.Scan(&b.ID, &b.ProjectID, &b.Name, &b.Snapshot, &b.CreatedBy, &b.CreatedAt); err != nil {
+			return nil, err
+		}
+		baselines = append(baselines, b)
+	}
+	return baselines, rows.Err()
+}
+
+func (r *postgresBaselineRepository) GetBaseline(ctx context.Context, id string) (*Baseline, error) {
+	b := &Baseline{}
+	err := r.pool.QueryRow(ctx,
+		`SELECT id, project_id, name, snapshot, created_by, created_at
+		 FROM pm.baselines WHERE id=$1`,
+		id,
+	).Scan(&b.ID, &b.ProjectID, &b.Name, &b.Snapshot, &b.CreatedBy, &b.CreatedAt)
+	if err != nil {
+		return nil, err
+	}
+	return b, nil
+}
+
+

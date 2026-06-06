@@ -29,7 +29,7 @@ CREATE INDEX ON ai.embeddings(sheet_id);
 
 -- ─── Query Log ──────────────────────────────────────────────
 CREATE TABLE ai.query_log (
-  id              UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  id              UUID DEFAULT gen_random_uuid(),
   workspace_id    UUID NOT NULL REFERENCES workspaces(id) ON DELETE CASCADE,
   user_id         UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
   prompt          TEXT NOT NULL,
@@ -42,7 +42,8 @@ CREATE TABLE ai.query_log (
   data_included   BOOLEAN NOT NULL DEFAULT FALSE,
   columns_included UUID[] NOT NULL DEFAULT '{}',
   error           TEXT,
-  created_at      TIMESTAMPTZ NOT NULL DEFAULT NOW()
+  created_at      TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  PRIMARY KEY (id, created_at)
 ) PARTITION BY RANGE (created_at);
 
 CREATE TABLE ai.query_log_2026_05

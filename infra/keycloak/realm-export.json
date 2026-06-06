@@ -91,7 +91,7 @@
       "enabled": true,
       "emailVerified": true,
       "credentials": [
-        { "type": "password", "value": "demo123", "temporary": false }
+        { "type": "password", "value": "demo1234", "temporary": false }
       ],
       "realmRoles": ["EDITOR"]
     }

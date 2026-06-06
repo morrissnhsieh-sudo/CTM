@@ -30,7 +30,7 @@ async function main() {
 
   const pubClient = new Redis(env.REDIS_URL)
   pubClient.on('error', (err) => logger.error({ err }, 'Redis pub error'))
-  const subClient = pubClient.duplicate()
+  const subClient = pubClient.duplicate({ enableReadyCheck: false })
   subClient.on('error', (err) => logger.error({ err }, 'Redis sub error'))
 
   const kafka = new Kafka({ clientId: 'messaging-service', brokers: env.KAFKA_BROKERS.split(',') })
@@ -94,7 +94,16 @@ async function main() {
 
   // ─── Kafka consumer ───────────────────────────────────────
   const kafkaConsumer = new KafkaConsumer(kafka, dispatcher, logger)
-  await kafkaConsumer.start()
+  for (let i = 1; i <= 5; i++) {
+    try {
+      await kafkaConsumer.start()
+      break
+    } catch (err) {
+      logger.warn({ err, attempt: i }, 'Kafka consumer start failed, retrying in 5s...')
+      if (i === 5) throw err
+      await new Promise(r => setTimeout(r, 5000))
+    }
+  }
 
   // ─── Start server ─────────────────────────────────────────
   await app.listen({ port: env.PORT, host: '0.0.0.0' })

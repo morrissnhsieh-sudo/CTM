@@ -9,6 +9,15 @@ export interface Sheet {
   createdAt: Date
   updatedAt: Date
   archivedAt: Date | null
+  folderId: string | null
+}
+
+export interface Folder {
+  id: string
+  workspaceId: string
+  parentId: string | null
+  name: string
+  createdAt: Date
 }
 
 export interface SheetSettings {

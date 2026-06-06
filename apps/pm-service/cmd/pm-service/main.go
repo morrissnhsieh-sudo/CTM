@@ -52,6 +52,8 @@ func main() {
 	approvalRepo := repository.NewApprovalRepository(pool)
 	triggerRepo := repository.NewTriggerRepository(pool)
 	timeRepo := repository.NewTimeRepository(pool)
+	allocRepo := repository.NewResourceAllocationRepository(pool)
+	baselineRepo := repository.NewBaselineRepository(pool)
 
 	// ─── Domain services ───────────────────────────────────────
 	cpmSvc := cpm.NewService(taskRepo, log)
@@ -78,7 +80,7 @@ func main() {
 
 	// ─── HTTP / REST gateway (for M3 proxy) ────────────────────
 	httpAddr := getEnv("HTTP_ADDR", ":8080")
-	router := pmhttp.NewRouter(taskRepo, projectRepo, cpmSvc, approvalSvc, triggerSvc, timeRepo, log)
+	router := pmhttp.NewRouter(taskRepo, projectRepo, cpmSvc, approvalSvc, triggerSvc, timeRepo, allocRepo, baselineRepo, log)
 	httpServer := &http.Server{Addr: httpAddr, Handler: router}
 
 	// ─── Kafka consumer ────────────────────────────────────────

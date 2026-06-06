@@ -20,7 +20,7 @@ async function signIn(page: Page) {
   await page.click('button[type="submit"]')
   // Keycloak login form
   await page.fill('#username', 'demo@ctm.app')
-  await page.fill('#password', 'demo123')
+  await page.fill('#password', 'demo1234')
   await page.click('#kc-login')
   await page.waitForURL(`${BASE_URL}/**`)
 }

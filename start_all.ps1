@@ -422,8 +422,11 @@ Write-Host "    Kafka UI    -> http://localhost:8090" -ForegroundColor Cyan
 Write-Host "    MinIO       -> http://localhost:9001  (ctm_admin / ctm_minio_pass)" -ForegroundColor Cyan
 Write-Host "    AI Service  -> http://localhost:8001/docs  (FastAPI)" -ForegroundColor Cyan
 Write-Host ""
-Write-Host "  Demo login:  demo@ctm.app / demo123" -ForegroundColor Yellow
-Write-Host "  Admin login: admin@ctm.dev / password123" -ForegroundColor Yellow
+Write-Host "  Accounts available for verification:" -ForegroundColor Yellow
+Write-Host "    Admin   -> admin@ctm.app / admin123" -ForegroundColor Yellow
+Write-Host "    PjM     -> pjm@ctm.app / pjm12345" -ForegroundColor Yellow
+Write-Host "    Manager -> manager@ctm.app / manager12345" -ForegroundColor Yellow
+Write-Host "    Member  -> member@ctm.app / member12345" -ForegroundColor Yellow
 Write-Host ""
 Write-Host "  Useful commands:" -ForegroundColor White
 Write-Host "    docker compose logs -f <service>   # stream logs" -ForegroundColor DarkGray

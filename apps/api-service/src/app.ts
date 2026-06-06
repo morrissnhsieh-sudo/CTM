@@ -10,6 +10,7 @@ import { swaggerPlugin } from './plugins/swagger.js'
 import { formulaPlugin } from './formula/plugin.js'
 
 import { sheetsRouter } from './routes/sheets.js'
+import { foldersRouter } from './routes/folders.js'
 import { rowsRouter } from './routes/rows.js'
 import { columnsRouter } from './routes/columns.js'
 import { cellsRouter } from './routes/cells.js'
@@ -24,6 +25,7 @@ import { copyRouter } from './routes/copy.js'
 import { exportRouter } from './routes/export.js'
 import { importRouter } from './routes/import.js'
 import { discussionsRouter } from './routes/discussions.js'
+import { attachmentsRouter } from './routes/attachments.js'
 import { mcpRouter } from './mcp/router.js'
 
 import cors from '@fastify/cors'
@@ -56,7 +58,9 @@ export async function buildApp(app: FastifyInstance) {
   await app.register(
     async (v1) => {
       v1.register(workspacesRouter,  { prefix: '/workspaces' })
+      v1.register(foldersRouter,     { prefix: '/folders' })
       v1.register(sheetsRouter,      { prefix: '/sheets' })
+      v1.register(attachmentsRouter, { prefix: '/attachments' })
       v1.register(copyRouter,        { prefix: '/sheets' })       // POST /sheets/:id/copy
       v1.register(discussionsRouter, { prefix: '/sheets' })       // GET/POST /sheets/:id/discussions
       v1.register(rowsRouter,        { prefix: '/sheets' })
@@ -83,6 +87,17 @@ export async function buildApp(app: FastifyInstance) {
   // ─── Global error handler ────────────────────────────────
   app.setErrorHandler((error: any, request, reply) => {
     const requestId = request.id as string
+
+    // Zod validation errors → 400
+    if (error?.name === 'ZodError' && Array.isArray(error.issues)) {
+      const first = error.issues[0]
+      const field = first?.path?.join('.') ?? 'unknown'
+      const msg   = first?.message ?? 'Invalid request body'
+      return reply.code(400).send({
+        error: { code: 'VALIDATION_ERROR', message: `${field}: ${msg}`, requestId },
+      })
+    }
+
     app.log.error({ err: error, requestId }, 'Unhandled error')
 
     const statusCode = (error && typeof error === 'object' && error.statusCode) ? error.statusCode : 500

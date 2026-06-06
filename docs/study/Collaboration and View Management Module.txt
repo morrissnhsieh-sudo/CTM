@@ -1,0 +1,160 @@
+# Software Specification: Smartsheet-Style Collaboration & View Management Module
+
+## 1. Document Overview
+
+This specification defines the functional and technical architectural requirements for a scalable, collaboration-heavy project management workspace. It details the initialization of data assets, row/column orchestration, granular file attachment layers, pinpoint proofing, conditional formatting logic, and multi-view synchronization pipelines.
+
+---
+
+## 2. Workspace & Data Management
+
+### 2.1 Asset Initialization & Workspace Security
+
+The platform uses a folder-like containment structure called a **Workspace** to enforce top-down access control. Permission criteria are assigned explicitly at the workspace boundary.
+
+```
+       [ Workspace Permission Layer ] 
+          ├── Admin (Full Write + User Management)
+          ├── Editor (Write Permissions; Share Optional)
+          ├── Commenter (Read + Row Annotations)
+          └── Viewer (Read-Only)
+
+```
+
+* **Sheet Creation Framework:** The initialization endpoint must support two deterministic base schemas:
+* **Grid Mode:** A flexible data table template utilizing loose user-defined column tracking.
+* **Project Mode:** Enforces a rigid system schema containing `Duration`, `Start Date`, `Finish Date`, and `Predecessors` column hooks to feed a native dependency engine.
+
+
+* **Template Importer Engine:** A translation middleware mapping external file schemas (`.xlsx`, Google Sheets json, `.mpp`) into the system data grid. The importer must run an isolation parser to match raw columns to known system types (e.g., matching string patterns to date objects) and present user verification dialogs for columns failing pattern checks.
+
+### 2.2 Row & Column Manipulation Mechanics
+
+* **Bulk Row Creation Handler:** The UI data grid must intercept context menu commands and execute bulk sequential pointer insertions (e.g., adding 3 to 5 rows simultaneously) without invalidating index pointers for active client connections.
+* **Column Type Restrictors:** Columns must support strict runtime validation schemas:
+* `Contact List` / `Assigned To`: Must validate targets against the internal organization account identity database.
+* `Dropdown List`: Constrains cell editing strings to an immutable array of keys defined in the column's configuration.
+
+
+* **Visual Layout Mutators:** Users with Editor or Admin privileges can alter column orders. Left-clicking a header element switches the interaction to a floating layout container. Dragging the container translates its horizontal layout coordinate ($X$), updating the column position index dynamically upon the `MouseUp` event across all shared client sessions.
+
+---
+
+## 3. Collaboration, Attachments, and Interactive Proofing
+
+### 3.1 Dual-Scope Attachment Subsystem
+
+The file attachment module divides storage pointers into two distinct categories to manage availability and structural context.
+
+```
++-------------------------------------------------------------+
+| WORKSPACE SCOPE (Asset Container)                           |
+|  └── Project_Charter.pdf  --> Available to all shared members|
++-------------------------------------------------------------+
+| ROW SCOPE (Data Table Row #5)                               |
+|  └── Vendor_Invoice_71.png --> Bound strictly to Row ID 5   |
++-------------------------------------------------------------+
+
+```
+
+* **Row-Level Attachments:** Files dropped onto a specific row metadata marker generate a storage asset record permanently linked via a foreign key relationship to that specific `Row ID`.
+* **Workspace-Level Attachments:** Files dropped onto the master tracking pane bypass individual rows, logging storage pointers directly into the workspace container node for universal accessibility.
+
+### 3.2 Dynamic Visual Proofing Engine
+
+The proofing system handles granular file evaluation by combining flat canvas layers with coordinate-mapped discussion strings.
+
+```
++-------------------------------------------------------+
+|  [Uploaded Proof Image Canvas]                        |
+|                                                       |
+|   (Pin 1) [ x: 142, y: 310 ]                          |
+|      └── Comment Loop #1: "Incorrect branding color."  |
+|                                                       |
++-------------------------------------------------------+
+
+```
+
+1. **Canvas Layer Initialization:** Upon dropping an asset file into the Proof panel, the layout initializes an interactive coordinate bounding box ($X_{max} \times Y_{max}$) across a clean vector wrapper.
+2. **Pin Placement & Geometry Mapping:** Left-clicking any location on the visual preview calculates percentages for the marker's offset:
+
+$$X_{percent} = \frac{X_{click}}{X_{max}}, \quad Y_{percent} = \frac{Y_{click}}{Y_{max}}$$
+
+
+3. **Thread Binding:** The calculated coordinates register a thread collection instance (`Thread_ID`). The canvas draws a numeric badge directly over the coordinate target, instantly linking UI annotations to specific regions of the asset image.
+
+### 3.3 Contextual Conversation Hub
+
+* **Granular Comment Routing:** Comments are classified upon creation as `Scope: Row` (passing a target `Row_ID`) or `Scope: Sheet` (global context flag).
+* **Outbound Communication Bridging:** The comments storage driver must watch for explicitly requested event updates. When a user chooses to forward a conversation thread, the platform captures the conversation text along with a contextual hyperlink to the row, dispatching it to external email relays through an outbound SMTP connection block.
+
+---
+
+## 4. Automation & View Transformation Pipelines
+
+### 4.1 Conditional Formatting Evaluation Engine
+
+The sheet layout architecture runs an independent styling evaluation loop whenever a data value changes.
+
+```
+[Cell Value Change Event] 
+   └── 1. Evaluate Rule Expressions 
+   └── 2. Apply Custom Layout Classes 
+   └── 3. Force View Port Paint Update
+
+```
+
+* **Rules Configuration Schema:** Rules are structured as logical conditional expressions:
+
+$$\text{IF } \langle\text{Target Column}\rangle \cdot \langle\text{Operator}\rangle \cdot \langle\text{Condition Value}\rangle \implies \text{THEN } \langle\text{Style Target}\rangle \cdot \langle\text{Visual Properties}\rangle$$
+
+
+* **Execution Execution Loop:**
+1. The evaluation worker loops through active rules when a field updates.
+2. *Example Scenario:* A rule states: `IF Status == 'Complete' THEN Row_Style = Strike-Through`.
+3. If the criteria are met, the client application applies a custom layout class to the target row node, executing an internal repaint step that applies the style changes instantly across all view ports.
+
+
+
+### 4.2 Multi-Viewport Transformation Engine (Cross-View Sync)
+
+The platform uses an uncoupling architecture where a single underlying **State Data Array** acts as the definitive source of truth, feeding four interchangeable display transformations. Modifying task values in any specific display mode alters this shared data state, instantly propagating changes across all alternative layouts.
+
+```
+                       +----------------------+
+                       |   State Data Array   |
+                       |  (Single Source)     |
+                       +----------------------+
+                                  |
+         +------------------------+------------------------+
+         |                        |                        |
+         v                        v                        v
++-----------------+      +-----------------+      +-----------------+
+|    Grid View    |      |    Card View    |      |  Calendar View  |
+| (Spreadsheet)   |      | (Kanban Board)  |      | (Date Grid UI)  |
++-----------------+      +-----------------+      +-----------------+
+
+```
+
+#### A. Grid View
+
+Renders the State Data Array linearly inside a standard two-dimensional spreadsheet layout. This view acts as the primary data insertion plane for setting up properties and attributes.
+
+#### B. Card View (Kanban Pipeline Transformation)
+
+* **Structural Redirection:** Maps rows into decoupled block components. The transformation requires selecting an enum or reference column to act as the lane separator framework (e.g., `Urgency` or `Assigned To`).
+* **State Mutation Mechanics:** Dragging a task card out of "Lane A" and dropping it into "Lane B" intercepts the layout drop coordinates, updates the value of the designated lane attribute on the core data record, and triggers an application-wide data sync.
+
+#### C. Calendar View (Chronological Distribution Mapping)
+
+* **Date Mapping Logic:** Scans the dataset for valid date entries (`Due Date` or `Start/End` date blocks). Rows containing valid dates are transformed into calendar items and injected into the matching boxes of a monthly or weekly calendar grid interface.
+
+#### D. Gantt View (Waterfall Task-Flow Synthesis)
+
+* **Visual Dependency Assembly:** Transforms tasks into horizontal timeline boxes using chronological data entries. It explicitly utilizes the `Predecessors` key array to draw directed connection vectors across related tasks, rendering structural work dependencies visually.
+* **Project Settings Boundary:** System settings that alter working schedules (e.g., mapping a custom 4-day or 6-day work week, or declaring non-working holidays) must be initialized and adjusted inside this visualization module. This limits calendar calculations to active operations.
+
+### 4.3 Published Mirror Sharing Layer
+
+* **Public Link Pipeline:** Generates a secure, randomized cryptographic token endpoint (`/shared/view/{token}`).
+* **Filtered Data Masking:** When an unauthenticated visitor requests a published view link, the server sets a read-only session state. This pipeline sanitizes the database payload by dropping edit endpoints, comment threads, and attachment assets, streaming only clean, layout-rendered vector rows directly to the stakeholder's browser window.

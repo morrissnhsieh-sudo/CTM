@@ -17,6 +17,7 @@ export interface GridState {
   viewportHeight: number
 
   // Selection
+  sheetId: string | null
   selection: CellSelection | null
   activeCell: { row: number; col: number } | null
   isEditing: boolean
@@ -32,6 +33,10 @@ export interface GridState {
   cellCache: Map<string, CellValue>      // "r{row}c{col}" → value
   formulaCache: Map<string, string>      // "r{row}c{col}" → formula
   formatCache: Map<string, Partial<CellFormat>>    // "r{row}c{col}" → format
+  cellUpdateCache: Map<string, string>   // "r{row}c{col}" → ISO string timestamp
+  columns: any[]
+  rowMetadata: Map<string, { parentId: string | null; expanded: boolean; indent: number }>
+  visibleRows: number[]
 
   // Actions
   setScroll: (top: number, left: number) => void
@@ -46,6 +51,11 @@ export interface GridState {
   setCellCache: (key: string, value: CellValue) => void
   setFormulaCache: (key: string, formula: string) => void
   setFormatCache: (key: string, format: Partial<CellFormat>) => void
+  setCellUpdateCache: (key: string, timestamp: string | null) => void
+  setColumns: (columns: any[]) => void
+  updateColumn: (colId: string, updates: any) => void
+  setRowMetadata: (key: string, meta: { parentId: string | null; expanded: boolean; indent: number }) => void
+  updateVisibleRows: (rowCount: number) => void
   applyFormat: (format: Partial<CellFormat>) => void
   undo: () => void
   redo: () => void
@@ -62,6 +72,7 @@ export const useGridStore = create<GridState>()(
     viewportWidth: 0,
     viewportHeight: 0,
 
+    sheetId: null,
     selection: null,
     activeCell: null,
     isEditing: false,
@@ -75,6 +86,10 @@ export const useGridStore = create<GridState>()(
     cellCache: new Map(),
     formulaCache: new Map(),
     formatCache: new Map(),
+    cellUpdateCache: new Map(),
+    columns: [],
+    rowMetadata: new Map(),
+    visibleRows: [],
 
     setScroll: (top, left) => set({ scrollTop: top, scrollLeft: left }),
     setViewport: (width, height) => set({ viewportWidth: width, viewportHeight: height }),
@@ -88,6 +103,44 @@ export const useGridStore = create<GridState>()(
     setCellCache: (key, value) => set((s) => { const m = new Map(s.cellCache); m.set(key, value); return { cellCache: m } }),
     setFormulaCache: (key, formula) => set((s) => { const m = new Map(s.formulaCache); m.set(key, formula); return { formulaCache: m } }),
     setFormatCache: (key, format) => set((s) => { const m = new Map(s.formatCache); m.set(key, format); return { formatCache: m } }),
+    setCellUpdateCache: (key, timestamp) => set((s) => {
+      const m = new Map(s.cellUpdateCache)
+      if (timestamp) {
+        m.set(key, timestamp)
+      } else {
+        m.delete(key)
+      }
+      return { cellUpdateCache: m }
+    }),
+    setColumns: (cols) => set({ columns: cols }),
+    updateColumn: (colId, updates) => set((s) => ({
+      columns: s.columns.map((c) => c.id === colId ? { ...c, ...updates } : c)
+    })),
+    setRowMetadata: (key, meta) => set((s) => {
+      const m = new Map(s.rowMetadata)
+      m.set(key, meta)
+      return { rowMetadata: m }
+    }),
+    updateVisibleRows: (rowCount) => {
+      const state = get()
+      const list: number[] = []
+      for (let r = 0; r < rowCount; r++) {
+        let visible = true
+        let parentKey = state.rowMetadata.get(`r${r}`)?.parentId
+        while (parentKey) {
+          const parentMeta = state.rowMetadata.get(parentKey)
+          if (parentMeta && !parentMeta.expanded) {
+            visible = false
+            break
+          }
+          parentKey = parentMeta?.parentId
+        }
+        if (visible) {
+          list.push(r)
+        }
+      }
+      set({ visibleRows: list })
+    },
     applyFormat: (format) => {
       const state = get()
       const selection = state.selection
@@ -109,7 +162,19 @@ export const useGridStore = create<GridState>()(
     },
     undo: () => {},
     redo: () => {},
-    clearCellCache: () => set({ cellCache: new Map(), formulaCache: new Map(), formatCache: new Map() }),
+    clearCellCache: () => set({ 
+      cellCache: new Map(), 
+      formulaCache: new Map(), 
+      formatCache: new Map(), 
+      cellUpdateCache: new Map(), 
+      columns: [], 
+      rowMetadata: new Map(), 
+      visibleRows: [],
+      activeCell: null,
+      selection: null,
+      isEditing: false,
+      editValue: ''
+    }),
   }))
 )
 

@@ -9,30 +9,30 @@ import (
 // ─── Task ────────────────────────────────────────────────────────────────────
 
 type Task struct {
-	ID           string
-	ProjectID    string
-	SheetID      string
-	RowID        string
-	Name         string
-	StartDate    *time.Time
-	EndDate      *time.Time
-	DurationDays int
-	AssigneeID   *string
-	Status       string
-	IsMilestone  bool
-	IsCritical   bool
-	FloatDays    *int
-	CreatedAt    time.Time
-	UpdatedAt    time.Time
-	DeletedAt    *time.Time
+	ID           string     `json:"id"`
+	ProjectID    string     `json:"projectId"`
+	SheetID      string     `json:"sheetId"`
+	RowID        string     `json:"rowId"`
+	Name         string     `json:"name"`
+	StartDate    *time.Time `json:"startDate"`
+	EndDate      *time.Time `json:"endDate"`
+	DurationDays int        `json:"durationDays"`
+	AssigneeID   *string    `json:"assigneeId"`
+	Status       string     `json:"status"`
+	IsMilestone  bool       `json:"isMilestone"`
+	IsCritical   bool       `json:"isCritical"`
+	FloatDays    *int       `json:"floatDays"`
+	CreatedAt    time.Time  `json:"createdAt"`
+	UpdatedAt    time.Time  `json:"updatedAt"`
+	DeletedAt    *time.Time `json:"deletedAt,omitempty"`
 }
 
 type Dependency struct {
-	ID             string
-	FromTaskID     string
-	ToTaskID       string
-	DependencyType string
-	LagDays        int
+	ID             string `json:"id"`
+	FromTaskID     string `json:"fromTaskId"`
+	ToTaskID       string `json:"toTaskId"`
+	DependencyType string `json:"dependencyType"`
+	LagDays        int    `json:"lagDays"`
 }
 
 // ─── Approval ────────────────────────────────────────────────────────────────
@@ -93,7 +93,9 @@ type Project struct {
 	StartDate   *time.Time
 	EndDate     *time.Time
 	Settings    json.RawMessage
+	CreatedBy   *string
 }
+
 
 // ─── Interfaces ───────────────────────────────────────────────────────────────
 
@@ -105,10 +107,14 @@ type TaskRepository interface {
 	UpdateTask(ctx context.Context, task *Task) error
 	DeleteTask(ctx context.Context, id string) error
 	UpdateCPMResults(ctx context.Context, projectID string, results []*Task) error
+	CreateDependency(ctx context.Context, dep *Dependency) error
+	DeleteDependency(ctx context.Context, id string) error
+	ClearTaskDependencies(ctx context.Context, taskID string) error
 }
 
 type ProjectRepository interface {
 	ListWorkspaceProjects(ctx context.Context, workspaceID string) ([]*Project, error)
+	ListOwnedProjects(ctx context.Context, workspaceID, createdBy string) ([]*Project, error)
 	CreateProject(ctx context.Context, project *Project) error
 	GetProject(ctx context.Context, id string) (*Project, error)
 }
@@ -132,3 +138,39 @@ type TimeRepository interface {
 	GetTaskTime(ctx context.Context, rowID string) (int, error)
 	GetProjectTime(ctx context.Context, projectID string) (int, error)
 }
+
+type ResourceAllocation struct {
+	ID                string    `json:"id"`
+	ResourceID        string    `json:"resourceId"`
+	ProjectID         string    `json:"projectId"`
+	AllocationPercent int       `json:"allocationPercent"`
+	StartDate         time.Time `json:"startDate"`
+	EndDate           time.Time `json:"endDate"`
+	CreatedAt         time.Time `json:"createdAt"`
+	UpdatedAt         time.Time `json:"updatedAt"`
+}
+
+type ResourceAllocationRepository interface {
+	ListProjectAllocations(ctx context.Context, projectID string) ([]*ResourceAllocation, error)
+	ListResourceAllocations(ctx context.Context, resourceID string) ([]*ResourceAllocation, error)
+	CreateAllocation(ctx context.Context, alloc *ResourceAllocation) error
+}
+
+// ─── Baseline ────────────────────────────────────────────────────────────────
+
+type Baseline struct {
+	ID        string          `json:"id"`
+	ProjectID string          `json:"projectId"`
+	Name      string          `json:"name"`
+	Snapshot  json.RawMessage `json:"snapshot"`
+	CreatedBy string          `json:"createdBy"`
+	CreatedAt time.Time       `json:"createdAt"`
+}
+
+type BaselineRepository interface {
+	CreateBaseline(ctx context.Context, b *Baseline) error
+	ListBaselines(ctx context.Context, projectID string) ([]*Baseline, error)
+	GetBaseline(ctx context.Context, id string) (*Baseline, error)
+}
+
+

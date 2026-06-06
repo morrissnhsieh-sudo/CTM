@@ -1,7 +1,7 @@
 import type { FastifyPluginAsync } from 'fastify'
 import { z } from 'zod'
 import { eq, and } from 'drizzle-orm'
-import { cells } from '../db/schema.js'
+import { cells, columns, users } from '../db/schema.js'
 import { withRls } from '../db/helpers.js'
 import { hasMinRole } from '@ctm/shared-types'
 import { v4 as uuid } from 'uuid'
@@ -47,6 +47,77 @@ export const cellsRouter: FastifyPluginAsync = async (app) => {
     const computedValue = isFormula
       ? (formulaDiff?.[0]?.newValue != null ? String(formulaDiff[0].newValue) : undefined)
       : (strValue ?? undefined)
+
+    // Cell Write Validation based on Column Type
+    const colDef = await withRls(app.db, request, async (tx) => {
+      const result = await tx
+        .select()
+        .from(columns)
+        .where(eq(columns.id, colId))
+        .limit(1)
+      return result[0]
+    })
+
+    const valueToValidate = isFormula ? computedValue : strValue
+
+    if (colDef && valueToValidate !== null && valueToValidate !== undefined && valueToValidate !== '') {
+      const colType = colDef.type
+
+      if (colType === 'number' || colType === 'currency') {
+        const num = Number(valueToValidate)
+        if (isNaN(num)) {
+          return reply.code(400).send({
+            error: {
+              code: 'VALIDATION_ERROR',
+              message: `Column "${colDef.name}" requires a numeric value`,
+              requestId: request.id
+            }
+          })
+        }
+      } else if (colType === 'date' || colType === 'datetime') {
+        const dateParsed = Date.parse(valueToValidate)
+        if (isNaN(dateParsed)) {
+          return reply.code(400).send({
+            error: {
+              code: 'VALIDATION_ERROR',
+              message: `Column "${colDef.name}" requires a valid date format`,
+              requestId: request.id
+            }
+          })
+        }
+      } else if (colType === 'dropdown') {
+        const formatObj = (colDef.format as any) || {}
+        const dropdownOptions = formatObj.dropdownOptions || []
+        const validOptions = dropdownOptions.map((opt: any) => opt.label)
+        if (validOptions.length > 0 && !validOptions.includes(valueToValidate)) {
+          return reply.code(400).send({
+            error: {
+              code: 'VALIDATION_ERROR',
+              message: `Value "${valueToValidate}" is not valid for column "${colDef.name}". Must be one of: ${validOptions.join(', ')}`,
+              requestId: request.id
+            }
+          })
+        }
+      } else if (colType === 'contact') {
+        const validUser = await withRls(app.db, request, async (tx) => {
+          const result = await tx
+            .select()
+            .from(users)
+            .where(and(eq(users.id, valueToValidate), eq(users.workspaceId, request.ctx.workspaceId)))
+            .limit(1)
+          return result[0]
+        })
+        if (!validUser) {
+          return reply.code(400).send({
+            error: {
+              code: 'VALIDATION_ERROR',
+              message: `Value must be a valid user ID in the workspace for column "${colDef.name}"`,
+              requestId: request.id
+            }
+          })
+        }
+      }
+    }
 
     const [updated] = await withRls(app.db, request, async (tx) =>
       tx.insert(cells)

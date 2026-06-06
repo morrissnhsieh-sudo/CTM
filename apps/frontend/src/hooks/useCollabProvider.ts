@@ -13,7 +13,18 @@ const COLLAB_URL = process.env['NEXT_PUBLIC_COLLAB_URL'] ?? 'ws://localhost:1234
 
 export function useCollabProvider(sheetId: string) {
   const { user, accessToken } = useAuthStore()
-  const docRef = useRef<Y.Doc>(new Y.Doc({ guid: sheetId }))
+  
+  const docRef = useRef<Y.Doc | null>(null)
+  if (!docRef.current) {
+    docRef.current = new Y.Doc({ guid: sheetId })
+  }
+
+  useEffect(() => {
+    useGridStore.setState({ sheetId })
+    useGridStore.getState().clearCellCache()
+  }, [sheetId])
+
+  const doc = docRef.current
   const providerRef = useRef<HocuspocusProvider | null>(null)
   const [connected, setConnected] = useState(false)
   const gridStore = useGridStore()
@@ -21,8 +32,6 @@ export function useCollabProvider(sheetId: string) {
 
   useEffect(() => {
     if (!user || !accessToken) return
-
-    const doc = docRef.current
 
     // IndexedDB for offline support
     const idb = new IndexeddbPersistence(`ctm-sheet-${sheetId}`, doc)
@@ -56,8 +65,8 @@ export function useCollabProvider(sheetId: string) {
 
         // Remove stale collaborators
         const activeUids = new Set(
-          Object.values(states as Record<string, Record<string, unknown>>)
-            .map((s) => s['userId'] as string)
+          Object.values(states as any)
+            .map((s: any) => s['userId'] as string)
             .filter(Boolean)
         )
         // Note: pruning done via disconnect events
@@ -78,7 +87,8 @@ export function useCollabProvider(sheetId: string) {
 
     // Sync Y.Doc cell changes back to gridStore
     const cellsMap = doc.getMap<Y.Map<unknown>>('cells')
-    const undoManager = new Y.UndoManager(cellsMap)
+    const rowMetadataMap = doc.getMap<any>('rowMetadata')
+    const undoManager = new Y.UndoManager([cellsMap, rowMetadataMap])
 
     const applyFormat = (format: Partial<import('@ctm/shared-types').CellFormat>) => {
       const selection = useGridStore.getState().selection
@@ -115,26 +125,86 @@ export function useCollabProvider(sheetId: string) {
       useGridStore.setState({ formatCache: m })
     }
 
+    const setRowMetadata = (key: string, meta: { parentId: string | null; expanded: boolean; indent: number }) => {
+      doc.transact(() => {
+        rowMetadataMap.set(key, meta)
+      })
+      const m = new Map(useGridStore.getState().rowMetadata)
+      m.set(key, meta)
+      useGridStore.setState({ rowMetadata: m })
+      useGridStore.getState().updateVisibleRows(1000)
+    }
+
     useGridStore.setState({
       undo: () => undoManager.undo(),
       redo: () => undoManager.redo(),
       applyFormat,
+      setRowMetadata,
     })
 
-    const observer = (event: Y.YMapEvent<Y.Map<unknown>>) => {
-      event.keysChanged.forEach((key) => {
-        const cell = cellsMap.get(key)
-        if (cell) {
-          const value = cell.get('value')
-          if (value !== undefined) {
-            gridStore.setCellCache(key, value as import('@ctm/shared-types').CellValue)
-          }
-          const format = cell.get('format')
-          if (format !== undefined) {
-            gridStore.setFormatCache(key, format as Partial<import('@ctm/shared-types').CellFormat>)
+    const deepObserver = (events: Y.YEvent<any>[]) => {
+      let metadataChanged = false
+      events.forEach((event) => {
+        if (event.target === cellsMap) {
+          const mapEvent = event as Y.YMapEvent<any>
+          mapEvent.keysChanged.forEach((key: string) => {
+            const cell = cellsMap.get(key)
+            if (cell) {
+              const value = cell.get('value')
+              if (value !== undefined) {
+                gridStore.setCellCache(key, value as import('@ctm/shared-types').CellValue)
+              }
+              const format = cell.get('format')
+              if (format !== undefined) {
+                gridStore.setFormatCache(key, format as Partial<import('@ctm/shared-types').CellFormat>)
+              }
+              const updatedAt = cell.get('updatedAt')
+              if (updatedAt !== undefined) {
+                gridStore.setCellUpdateCache(key, updatedAt as string)
+              }
+            } else {
+              gridStore.setCellCache(key, null)
+              gridStore.setFormatCache(key, {})
+              gridStore.setCellUpdateCache(key, null)
+            }
+          })
+        } else if (event.target === rowMetadataMap) {
+          const mapEvent = event as Y.YMapEvent<any>
+          mapEvent.keysChanged.forEach((key: string) => {
+            const meta = rowMetadataMap.get(key)
+            const m = new Map(useGridStore.getState().rowMetadata)
+            if (meta) {
+              m.set(key, meta)
+            } else {
+              m.delete(key)
+            }
+            useGridStore.setState({ rowMetadata: m })
+          })
+          metadataChanged = true
+        } else {
+          const key = event.path[0] as string | undefined
+          if (key) {
+            const cell = cellsMap.get(key)
+            if (cell) {
+              const value = cell.get('value')
+              if (value !== undefined) {
+                gridStore.setCellCache(key, value as import('@ctm/shared-types').CellValue)
+              }
+              const format = cell.get('format')
+              if (format !== undefined) {
+                gridStore.setFormatCache(key, format as Partial<import('@ctm/shared-types').CellFormat>)
+              }
+              const updatedAt = cell.get('updatedAt')
+              if (updatedAt !== undefined) {
+                gridStore.setCellUpdateCache(key, updatedAt as string)
+              }
+            }
           }
         }
       })
+      if (metadataChanged) {
+        useGridStore.getState().updateVisibleRows(1000)
+      }
     }
 
     // Initial load
@@ -147,15 +217,26 @@ export function useCollabProvider(sheetId: string) {
       if (format !== undefined) {
         gridStore.setFormatCache(cellRef, format as Partial<import('@ctm/shared-types').CellFormat>)
       }
+      const updatedAt = cell.get('updatedAt')
+      if (updatedAt !== undefined) {
+        gridStore.setCellUpdateCache(cellRef, updatedAt as string)
+      }
     })
 
-    cellsMap.observe(observer)
+    rowMetadataMap.forEach((meta: any, key: string) => {
+      gridStore.setRowMetadata(key, meta)
+    })
+    gridStore.updateVisibleRows(1000)
+
+    cellsMap.observeDeep(deepObserver)
+    rowMetadataMap.observeDeep(deepObserver)
 
     providerRef.current = provider
 
     return () => {
       unsubGrid()
-      cellsMap.unobserve(observer)
+      cellsMap.unobserveDeep(deepObserver)
+      rowMetadataMap.unobserveDeep(deepObserver)
       provider.destroy()
       idb.destroy()
       setConnected(false)
@@ -163,6 +244,7 @@ export function useCollabProvider(sheetId: string) {
       useGridStore.setState({
         undo: () => {},
         redo: () => {},
+        setRowMetadata: () => {},
         applyFormat: (format: Partial<import('@ctm/shared-types').CellFormat>) => {
           const state = useGridStore.getState()
           const selection = state.selection

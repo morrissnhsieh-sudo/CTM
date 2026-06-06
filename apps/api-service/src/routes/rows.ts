@@ -9,12 +9,17 @@ import { v4 as uuid } from 'uuid'
 const InsertRowsBody = z.object({
   rows: z.array(z.object({
     position: z.number().int().nonnegative().optional(),
+    parentId: z.string().uuid().nullable().optional(),
+    expanded: z.boolean().optional(),
     cells: z.record(z.union([z.string(), z.number(), z.boolean(), z.null()])).optional(),
   })).min(1).max(500),
 })
 
 const UpdateRowBody = z.object({
-  cells: z.record(z.union([z.string(), z.number(), z.boolean(), z.null()])),
+  cells: z.record(z.union([z.string(), z.number(), z.boolean(), z.null()])).optional(),
+  parentId: z.string().uuid().nullable().optional(),
+  expanded: z.boolean().optional(),
+  position: z.number().int().nonnegative().optional(),
 })
 
 export const rowsRouter: FastifyPluginAsync = async (app) => {
@@ -147,6 +152,8 @@ export const rowsRouter: FastifyPluginAsync = async (app) => {
           body.rows.map((r, i) => ({
             id: uuid(),
             sheetId,
+            parentId: r.parentId ?? null,
+            expanded: r.expanded ?? true,
             position: r.position ?? startPos + i,
             createdBy: request.ctx.userId,
           })),
@@ -210,40 +217,46 @@ export const rowsRouter: FastifyPluginAsync = async (app) => {
     const changedCols: string[] = []
 
     await withRls(app.db, request, async (tx) => {
-      for (const [colId, rawValue] of Object.entries(body.cells)) {
-        const value = rawValue == null ? null : String(rawValue)
-        const isFormula = typeof rawValue === 'string' && rawValue.startsWith('=')
+      if (body.cells) {
+        for (const [colId, rawValue] of Object.entries(body.cells)) {
+          const value = rawValue == null ? null : String(rawValue)
+          const isFormula = typeof rawValue === 'string' && rawValue.startsWith('=')
 
-        await tx
-          .insert(cells)
-          .values({
-            rowId,
-            colId,
-            ...(isFormula ? { formula: value } : (value != null ? { value } : {})),
-            updatedBy: request.ctx.userId,
-          })
-          .onConflictDoUpdate({
-            target: [cells.rowId, cells.colId],
-            set: {
-              value: isFormula ? null : value,
-              formula: isFormula ? value : null,
+          await tx
+            .insert(cells)
+            .values({
+              rowId,
+              colId,
+              ...(isFormula ? { formula: value } : (value != null ? { value } : {})),
               updatedBy: request.ctx.userId,
-              updatedAt: new Date(),
-            } as any,
-          })
+            })
+            .onConflictDoUpdate({
+              target: [cells.rowId, cells.colId],
+              set: {
+                value: isFormula ? null : value,
+                formula: isFormula ? value : null,
+                updatedBy: request.ctx.userId,
+                updatedAt: new Date(),
+              } as any,
+            })
 
-        changedCols.push(colId)
+          changedCols.push(colId)
 
-        // Trigger formula engine if this is a formula or affects other formulas
-        if (isFormula && value) {
-          await app.formulaEngine.setCellContents(sheetId, rowId, colId, value)
+          // Trigger formula engine if this is a formula or affects other formulas
+          if (isFormula && value) {
+            await app.formulaEngine.setCellContents(sheetId, rowId, colId, value)
+          }
         }
       }
 
+      const updateData: any = { updatedAt: new Date() }
+      if (body.parentId !== undefined) updateData.parentId = body.parentId
+      if (body.expanded !== undefined) updateData.expanded = body.expanded
+      if (body.position !== undefined) updateData.position = body.position
+
       await tx
         .update(rows)
-        // @ts-ignore -- Drizzle v0.41: PgUpdateSetSource excludes defaulted/nullable columns
-        .set({ updatedAt: new Date() })
+        .set(updateData)
         .where(eq(rows.id, rowId))
 
       // Publish row.updated event

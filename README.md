@@ -422,7 +422,7 @@ Once all services are running:
 | Role | Email | Password |
 |------|-------|----------|
 | Admin (OWNER) | `admin@ctm.app` | `admin123` |
-| Demo (EDITOR) | `demo@ctm.app` | `demo123` |
+| Demo (EDITOR) | `demo@ctm.app` | `demo1234` |
 
 ### Keycloak Admin Console (`http://localhost:8080/admin`)
 
@@ -666,7 +666,7 @@ $token = (Invoke-RestMethod `
       grant_type    = "password"
       client_id     = "ctm-web"
       username      = "demo@ctm.app"
-      password      = "demo123"
+      password      = "demo1234"
   }).access_token
 
 # Use the token

@@ -224,14 +224,27 @@ func (s *Service) Compute(ctx context.Context, projectID string) (*CriticalPath,
 		}
 	}
 
-	// ── Step 7: Collect results ────────────────────────────────
+	// ── Step 7: Collect results & Write back to Database ───────
 	var criticalIDs []string
 	var allTasks []*CPMTask
+	var dbTasks []*repository.Task
 	for _, t := range taskMap {
+		start := t.EarlyStart
+		end := t.EarlyFinish
+		t.Task.StartDate = &start
+		t.Task.EndDate = &end
+		t.Task.IsCritical = t.IsCritical
+		t.Task.FloatDays = &t.TotalFloat
+		
 		allTasks = append(allTasks, t)
+		dbTasks = append(dbTasks, t.Task)
 		if t.IsCritical {
 			criticalIDs = append(criticalIDs, t.ID)
 		}
+	}
+
+	if err := s.repo.UpdateCPMResults(ctx, projectID, dbTasks); err != nil {
+		return nil, fmt.Errorf("updating CPM results: %w", err)
 	}
 
 	// Sort by EarlyStart for deterministic output
@@ -246,7 +259,7 @@ func (s *Service) Compute(ctx context.Context, projectID string) (*CriticalPath,
 
 	totalDuration := int(math.Round(projectEnd.Sub(projectStart).Hours() / 24))
 
-	s.log.Info("CPM computed",
+	s.log.Info("CPM computed and persisted",
 		zap.String("projectId", projectID),
 		zap.Int("tasks", len(allTasks)),
 		zap.Int("criticalTasks", len(criticalIDs)),

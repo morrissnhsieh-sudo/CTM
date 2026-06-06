@@ -7,6 +7,10 @@ interface AuthUser {
   name: string
   role: string
   workspaceId: string
+  avatarUrl?: string | null
+  organizationName?: string | null
+  employeeId?: string | null
+  tel?: string | null
 }
 
 interface AuthState {

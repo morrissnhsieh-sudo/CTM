@@ -26,7 +26,8 @@ export const authPlugin = fp(async (app) => {
       path.startsWith('/v1/openapi') ||
       path.startsWith('/mcp/auth') ||
       path === '/v1/auth/login' ||
-      path === '/v1/auth/register'
+      path === '/v1/auth/register' ||
+      path.startsWith('/v1/sheets/shared/')
     ) {
       return
     }
@@ -102,6 +103,7 @@ export const authPlugin = fp(async (app) => {
         }
 
         if (workspaceId && workspaceId !== jwtPayload.workspace_id) {
+          app.log.warn({ headerWorkspaceId: workspaceId, tokenWorkspaceId: jwtPayload.workspace_id }, 'Workspace mismatch debug')
           return reply.code(401).send({ error: { code: 'UNAUTHORIZED', message: 'Token workspace mismatch', requestId: request.id as string } })
         }
 

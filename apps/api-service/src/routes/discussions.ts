@@ -24,8 +24,12 @@ import { hasMinRole } from '@ctm/shared-types'
 import { v4 as uuid } from 'uuid'
 
 const CreateDiscussionBody = z.object({
-  title: z.string().min(1).max(500).optional(),
-  body:  z.string().min(1).max(10_000),
+  title:             z.string().min(1).max(500).optional(),
+  body:              z.string().min(1).max(10_000),
+  // Proof-pin fields (optional — only set when creating an annotation on an image)
+  proofAttachmentId: z.string().uuid().optional(),
+  pinXPct:           z.number().min(0).max(1).optional(),
+  pinYPct:           z.number().min(0).max(1).optional(),
 })
 
 const UpdateDiscussionBody = z.object({
@@ -43,11 +47,12 @@ export const discussionsRouter: FastifyPluginAsync = async (app) => {
   app.get('/:sheetId/discussions', async (request, reply) => {
     const { sheetId } = request.params as { sheetId: string }
     const {
-      page     = 1,
-      pageSize = 50,
+      page               = 1,
+      pageSize           = 50,
       resolved,
+      proofAttachmentId,
       fields,
-    } = request.query as { page?: number; pageSize?: number; resolved?: string; fields?: string }
+    } = request.query as { page?: number; pageSize?: number; resolved?: string; proofAttachmentId?: string; fields?: string }
 
     const result = await withRls(app.db, request, async (tx) => {
       const [sheet] = await tx.select({ id: sheets.id }).from(sheets)
@@ -60,6 +65,7 @@ export const discussionsRouter: FastifyPluginAsync = async (app) => {
         isNull(discussions.deletedAt),
         ...(resolved === 'true'  ? [eq(discussions.resolved, true)]  : []),
         ...(resolved === 'false' ? [eq(discussions.resolved, false)] : []),
+        ...(proofAttachmentId    ? [eq(discussions.proofAttachmentId, proofAttachmentId)] : []),
       ]
 
       const offset = (page - 1) * Math.min(pageSize, 200)
@@ -101,10 +107,13 @@ export const discussionsRouter: FastifyPluginAsync = async (app) => {
         id:          uuid(),
         workspaceId: request.ctx.workspaceId,
         sheetId,
-        ...(body.title !== undefined && { title: body.title }),
+        ...(body.title              !== undefined && { title:             body.title }),
+        ...(body.proofAttachmentId  !== undefined && { proofAttachmentId: body.proofAttachmentId }),
+        ...(body.pinXPct            !== undefined && { pinXPct:           String(body.pinXPct) }),
+        ...(body.pinYPct            !== undefined && { pinYPct:           String(body.pinYPct) }),
         authorId:    request.ctx.userId,
         body:        body.body,
-      }).returning()
+      } as any).returning()
 
       return d
     })

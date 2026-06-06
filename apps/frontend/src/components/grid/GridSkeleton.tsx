@@ -18,8 +18,8 @@ export function GridSkeleton() {
           </div>
           {Array.from({ length: 8 }).map((_, col) => (
             <div key={col} className="w-36 h-full border-r border-border px-3 flex items-center">
-              {Math.random() > 0.4 && (
-                <div className="h-3 rounded bg-muted-foreground/10" style={{ width: `${30 + Math.random() * 60}%` }} />
+              {((row * 7 + col * 13) % 10) > 3 && (
+                <div className="h-3 rounded bg-muted-foreground/10" style={{ width: `${30 + ((row * 11 + col * 17) % 61)}%` }} />
               )}
             </div>
           ))}

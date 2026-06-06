@@ -1,6 +1,6 @@
 'use client'
 
-import { Grid, GanttChart, Columns, Calendar, FileText, LayoutDashboard, AlignLeft } from 'lucide-react'
+import { Grid, GanttChart, Columns, Calendar, FileText, LayoutDashboard, AlignLeft, Users } from 'lucide-react'
 import { useUIStore, type ViewMode } from '../../store/uiStore'
 import { cn } from '../../lib/utils'
 
@@ -12,6 +12,7 @@ const VIEWS: { mode: ViewMode; label: string; icon: React.ReactNode }[] = [
   { mode: 'form',      label: 'Form',      icon: <FileText size={14} /> },
   { mode: 'dashboard', label: 'Dashboard', icon: <LayoutDashboard size={14} /> },
   { mode: 'timeline',  label: 'Timeline',  icon: <AlignLeft size={14} /> },
+  { mode: 'resources', label: 'Resources', icon: <Users size={14} /> },
 ]
 
 export function ViewPicker() {

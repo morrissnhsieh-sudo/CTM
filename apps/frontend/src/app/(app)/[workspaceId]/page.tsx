@@ -27,9 +27,27 @@ export default async function WorkspacePage({
       redirect(`/${workspaceId}/sheets/${sheets[0].id}`)
     }
 
-    // No sheets exist yet — create a default one
+    // No sheets exist yet — resolve a project to create the default sheet under.
+    // Every sheet now requires a projectId (SPEC-003).
+    const projectsRes = await api.pm.listProjects({ accessToken: session.accessToken, workspaceId })
+    let defaultProjectId: string | undefined = projectsRes.data?.[0]?.id
+
+    if (!defaultProjectId) {
+      // No projects yet — create a General project (requires PjM or Admin role).
+      const created = await api.pm.createProject(
+        { name: 'General' },
+        { accessToken: session.accessToken, workspaceId },
+      )
+      defaultProjectId = created.data?.id
+    }
+
+    if (!defaultProjectId) {
+      throw new Error('No project available. Ask your workspace Admin or PjM to create a project first.')
+    }
+
+    // Create the default sheet under the resolved project
     const newSheet = await api.sheets.create(
-      { title: 'Untitled Sheet', description: 'Your first spreadsheet' },
+      { title: 'Untitled Sheet', description: 'Your first spreadsheet', projectId: defaultProjectId },
       { accessToken: session.accessToken, workspaceId },
     )
 

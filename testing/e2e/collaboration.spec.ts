@@ -35,7 +35,7 @@ test.describe('M2 Real-time Collaboration E2E', () => {
       browser, 'admin@ctm.app', 'admin123',
     )
     const { page: page2, context: ctx2 } = await createAuthenticatedContext(
-      browser, 'demo@ctm.app', 'demo123',
+      browser, 'demo@ctm.app', 'demo1234',
     )
 
     try {
@@ -76,7 +76,7 @@ test.describe('M2 Real-time Collaboration E2E', () => {
 test.describe('M1 AI Panel E2E', () => {
   test('AI panel opens and sends a query', async ({ browser }) => {
     const { page, context } = await createAuthenticatedContext(
-      browser, 'demo@ctm.app', 'demo123',
+      browser, 'demo@ctm.app', 'demo1234',
     )
 
     try {
@@ -103,7 +103,7 @@ test.describe('M1 AI Panel E2E', () => {
 
   test('AI panel mode selector works', async ({ browser }) => {
     const { page, context } = await createAuthenticatedContext(
-      browser, 'demo@ctm.app', 'demo123',
+      browser, 'demo@ctm.app', 'demo1234',
     )
 
     try {
