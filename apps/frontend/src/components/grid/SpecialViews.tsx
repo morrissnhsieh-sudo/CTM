@@ -22,9 +22,11 @@ import {
 } from 'lucide-react'
 import { useGridStore, getCellKey } from '../../store/gridStore'
 import { useUIStore } from '../../store/uiStore'
-import { useUserStore } from '../../store/userStore'
+import { useAuthStore } from '../../store/authStore'
 import { api } from '../../lib/api'
 import { GanttCanvas } from './GanttCanvas'
+
+const ROW_HEIGHT = 36
 
 interface RowData {
   id: number
@@ -50,7 +52,8 @@ export function SpecialViews({ sheetId, doc, columns }: SpecialViewsProps) {
   const [currentMonth, setCurrentMonth] = useState(new Date(2026, 5, 3)) // June 2026 (0-indexed month)
 
   // ─── PM / Resource Management State ───────────────────────
-  const { accessToken, workspaceId } = useUserStore()
+  const { accessToken, user } = useAuthStore()
+  const workspaceId = user?.workspaceId ?? ''
   const [sheet, setSheet] = useState<any>(null)
   const [projects, setProjects] = useState<any[]>([])
   const [users, setUsers] = useState<any[]>([])
@@ -281,6 +284,10 @@ export function SpecialViews({ sheetId, doc, columns }: SpecialViewsProps) {
     } catch (err) {
       console.error("Failed to inject template:", err)
     }
+  }
+
+  const handleLeftScroll = (e: React.UIEvent<HTMLDivElement>) => {
+    setGanttScrollTop((e.currentTarget as HTMLDivElement).scrollTop)
   }
 
   const handleResizerMouseDown = (e: React.MouseEvent) => {
@@ -618,16 +625,31 @@ export function SpecialViews({ sheetId, doc, columns }: SpecialViewsProps) {
       )
     }
 
-    const tasksToRender = pmTasks.length > 0 ? pmTasks : rows.map(r => ({
-      id: `task-${r.id}`,
-      name: r.name,
-      startDate: r.dueDate ? new Date(new Date(r.dueDate).getTime() - 2 * 24 * 60 * 60 * 1000).toISOString().split('T')[0] : '2026-06-01',
-      endDate: r.dueDate || '2026-06-03',
-      durationDays: 3,
-      status: r.status,
-      isCritical: false,
-      floatDays: 0,
-    }))
+    const tasksToRender = pmTasks.length > 0 ? pmTasks : rows.map(r => {
+      let startDate = '2026-06-01'
+      let endDate = '2026-06-03'
+      
+      try {
+        const d = new Date(r.dueDate)
+        if (!isNaN(d.getTime())) {
+          endDate = d.toISOString().split('T')[0]
+          startDate = new Date(d.getTime() - 2 * 24 * 60 * 60 * 1000).toISOString().split('T')[0]
+        }
+      } catch (e) {
+        // Fallback to defaults
+      }
+
+      return {
+        id: `task-${r.id}`,
+        name: r.name,
+        startDate,
+        endDate,
+        durationDays: 3,
+        status: r.status,
+        isCritical: false,
+        floatDays: 0,
+      }
+    })
 
     const handleFitToProject = () => {
       if (tasksToRender.length === 0) return

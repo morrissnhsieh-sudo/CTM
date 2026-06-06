@@ -3,6 +3,7 @@ export interface Sheet {
   workspaceId: string
   projectId: string | null
   title: string
+  type: 'SPREADSHEET' | 'GRID' | 'TEMPLATE' | 'FORM' | 'DASHBOARD'
   description: string | null
   createdBy: string
   settings: SheetSettings

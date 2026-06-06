@@ -2,7 +2,7 @@
 
 import { useState, useRef, useCallback, useEffect } from 'react'
 import { MessageCircle, X, Send, Pin, Check, ChevronDown, ChevronUp } from 'lucide-react'
-import { useUserStore } from '../../store/userStore'
+import { useAuthStore } from '../../store/authStore'
 import { api } from '../../lib/api'
 
 interface ProofPin {
@@ -29,7 +29,8 @@ interface ProofCanvasProps {
 }
 
 export function ProofCanvas({ attachmentId, imageUrl, sheetId, filename, onClose }: ProofCanvasProps) {
-  const { accessToken, workspaceId } = useUserStore()
+  const { accessToken, user } = useAuthStore()
+  const workspaceId = user?.workspaceId ?? ''
 
   const containerRef = useRef<HTMLDivElement>(null)
   const [pins, setPins] = useState<ProofPin[]>([])
