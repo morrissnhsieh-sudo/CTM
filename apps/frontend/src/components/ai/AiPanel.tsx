@@ -3,7 +3,13 @@
 import { useState, useRef, useEffect, useCallback } from 'react'
 import { Send, Sparkles, X, ChevronDown } from 'lucide-react'
 import { useAuthStore } from '@/store/authStore'
+import { useGridStore } from '@/store/gridStore'
+import { api } from '@/lib/api'
 import { cn } from '../../lib/utils'
+
+// Matches "rename [column] X to Y" and "change [column] [name of] X to Y"
+const RENAME_COLUMN_RE =
+  /^(?:rename|change)\s+(?:column\s+)?(?:name\s+(?:of\s+)?)?["']?(.+?)["']?\s+to\s+["']?(.+?)["']?$/i
 
 type AiMode = 'ask' | 'analyze' | 'generate' | 'automate'
 
@@ -30,6 +36,8 @@ const MODES: { mode: AiMode; label: string; description: string }[] = [
 
 export function AiPanel({ sheetId, onClose }: AiPanelProps) {
   const { accessToken, user } = useAuthStore()
+  const gridColumns = useGridStore((s) => s.columns)
+  const updateColumn = useGridStore((s) => s.updateColumn)
   const [mode, setMode] = useState<AiMode>('ask')
   const [messages, setMessages] = useState<Message[]>([])
   const [input, setInput] = useState('')
@@ -56,6 +64,39 @@ export function AiPanel({ sheetId, onClose }: AiPanelProps) {
 
     const token = accessToken ?? ''
     const workspaceId = user?.workspaceId ?? ''
+
+    // ── Column rename command ─────────────────────────────────────────────────
+    const renameMatch = input.trim().match(RENAME_COLUMN_RE)
+    if (renameMatch) {
+      const [, fromRaw, toRaw] = renameMatch
+      const fromName = fromRaw!.trim()
+      const toName = toRaw!.trim()
+      const col = gridColumns.find((c: any) => c.name.toLowerCase() === fromName.toLowerCase())
+
+      let replyContent: string
+      if (col) {
+        try {
+          await api.columns.update(
+            sheetId,
+            col.id,
+            { name: toName },
+            { accessToken: token, workspaceId },
+          )
+          updateColumn(col.id, { name: toName })
+          replyContent = `Done! Renamed column "${col.name}" to "${toName}".`
+        } catch {
+          replyContent = `Failed to rename column "${col.name}". Please try again.`
+        }
+      } else {
+        const available = gridColumns.map((c: any) => `"${c.name}"`).join(', ')
+        replyContent = `Column "${fromName}" not found. Available columns: ${available || '(none loaded yet)'}.`
+      }
+
+      setMessages(prev => [...prev, { id: crypto.randomUUID(), role: 'assistant', content: replyContent, type: 'text' }])
+      setLoading(false)
+      return
+    }
+    // ─────────────────────────────────────────────────────────────────────────
 
     const apiUrl = process.env['NEXT_PUBLIC_API_URL'] ?? 'http://localhost:3001'
     const endpoint = mode === 'generate' ? `${apiUrl}/v1/ai/formula` : `${apiUrl}/v1/ai/query`
@@ -142,7 +183,7 @@ export function AiPanel({ sheetId, onClose }: AiPanelProps) {
     } finally {
       setLoading(false)
     }
-  }, [input, loading, mode, sheetId, accessToken, user])
+  }, [input, loading, mode, sheetId, accessToken, user, gridColumns, updateColumn])
 
   return (
     <div className="flex flex-col h-full bg-background">

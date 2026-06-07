@@ -53,6 +53,8 @@ const HEADER_HEIGHT = 32
 const ROW_NUM_WIDTH = 48
 const DEFAULT_ROW_HEIGHT = 32
 const DEFAULT_COL_WIDTH = 150
+const MIN_COL_WIDTH = 40
+const RESIZE_ZONE = 5     // px from border edge that triggers col-resize cursor
 const FONT = '13px Inter, system-ui, sans-serif'
 const FONT_BOLD = 'bold 12px Inter, system-ui, sans-serif'
 
@@ -66,11 +68,12 @@ interface Column {
 
 interface GridCanvasProps {
   sheetId: string
+  workspaceId: string
   columns?: Column[]
   rowCount?: number
 }
 
-export function GridCanvas({ sheetId, columns = [], rowCount = 1000 }: GridCanvasProps) {
+export function GridCanvas({ sheetId, workspaceId, columns = [], rowCount = 1000 }: GridCanvasProps) {
   // 1. Hooks and Refs
   const containerRef = useRef<HTMLDivElement>(null)
   const rafRef = useRef<number | null>(null)
@@ -84,16 +87,31 @@ export function GridCanvas({ sheetId, columns = [], rowCount = 1000 }: GridCanva
   const { collaborators, userId } = useUserStore()
   const { accessToken: authToken, user } = useAuthStore()
   const { doc, provider } = useCollabProvider(sheetId)
-  const { 
-    viewMode, 
-    highlightChangesEnabled, 
+  const {
+    viewMode,
+    highlightChangesEnabled,
     highlightChangesTimeframe,
     toggleAttachmentsPanel,
     attachmentsPanelOpen
   } = useUIStore()
 
-  const authWorkspaceId = user?.workspaceId ?? ''
+  // Use the workspaceId from props instead of user.workspaceId
+  const authWorkspaceId = workspaceId
   const [viewport, setViewport] = useState({ w: 0, h: 0 })
+
+  // Local mutable column list — updated immediately on rename/resize before API round-trip
+  const [localColumns, setLocalColumns] = useState(columns)
+  useEffect(() => { setLocalColumns(columns) }, [columns])
+
+  // Resize drag state (ref so handlers close over it without stale closure issues)
+  const resizingRef = useRef<{ col: number; colId: string; startX: number; startWidth: number } | null>(null)
+
+  // Header cell being renamed (opens Column Properties dialog)
+  const [editingHeader, setEditingHeader] = useState<{ col: number; colId: string; name: string } | null>(null)
+  // Column header hover state — which col index is under the mouse
+  const [hoveredHeaderCol, setHoveredHeaderCol] = useState<number | null>(null)
+  // Column dropdown menu state
+  const [columnMenuOpen, setColumnMenuOpen] = useState<{ col: number; colId: string } | null>(null)
   const [rowAttachments, setRowAttachments] = useState<Map<string, any[]>>(new Map())
   const [sheetAttachments, setSheetAttachments] = useState<any[]>([])
   const [rowIdMap, setRowIdMap] = useState<string[]>([])
@@ -164,11 +182,11 @@ export function GridCanvas({ sheetId, columns = [], rowCount = 1000 }: GridCanva
 
   const totalWidth = useMemo(() => {
     let w = ROW_NUM_WIDTH
-    for (let i = 0; i < columns.length; i++) {
+    for (let i = 0; i < localColumns.length; i++) {
       w += store.colWidths.get(i) ?? DEFAULT_COL_WIDTH
     }
     return w
-  }, [columns.length, store.colWidths])
+  }, [localColumns.length, store.colWidths])
 
   const totalHeight = useMemo(() => {
     let h = HEADER_HEIGHT
@@ -217,6 +235,20 @@ export function GridCanvas({ sheetId, columns = [], rowCount = 1000 }: GridCanva
       parentId: newParentId
     })
   }, [store])
+
+  const commitHeaderEdit = useCallback(() => {
+    if (!editingHeader) { setEditingHeader(null); return }
+    const { col, colId, name } = editingHeader
+    const trimmed = name.trim()
+    setEditingHeader(null)
+    if (!trimmed) return
+    setLocalColumns(prev => prev.map((c, i) => i === col ? { ...c, name: trimmed } : c))
+    store.updateColumn(colId, { name: trimmed })
+    if (authToken && authWorkspaceId) {
+      api.columns.update(sheetId, colId, { name: trimmed }, { accessToken: authToken, workspaceId: authWorkspaceId })
+        .catch(() => {})
+    }
+  }, [editingHeader, store, authToken, authWorkspaceId, sheetId])
 
   const handleScroll = useCallback((e: React.UIEvent<HTMLDivElement>) => {
     const { scrollTop, scrollLeft } = e.currentTarget
@@ -326,6 +358,15 @@ export function GridCanvas({ sheetId, columns = [], rowCount = 1000 }: GridCanva
 
     if (y < HEADER_HEIGHT && x < ROW_NUM_WIDTH) {
       if (sheetAttachments.length > 0) cursor = 'pointer'
+    } else if (y < HEADER_HEIGHT && x >= ROW_NUM_WIDTH) {
+      // Column header — check if we're near a column border (resize handle)
+      for (let col = 0; col < localColumns.length; col++) {
+        const rightEdge = getX(col + 1)
+        if (Math.abs(x - rightEdge) <= RESIZE_ZONE) {
+          cursor = 'col-resize'
+          break
+        }
+      }
     } else if (x < ROW_NUM_WIDTH && y >= HEADER_HEIGHT) {
       const row = Math.max(0, Math.floor((y - HEADER_HEIGHT + store.scrollTop) / DEFAULT_ROW_HEIGHT))
       const absRow = store.visibleRows[row] ?? row
@@ -333,12 +374,12 @@ export function GridCanvas({ sheetId, columns = [], rowCount = 1000 }: GridCanva
       if (rowId && rowAttachments.has(rowId)) cursor = 'pointer'
     } else if (y >= HEADER_HEIGHT && x >= ROW_NUM_WIDTH) {
       let col = 0, cx = ROW_NUM_WIDTH - store.scrollLeft
-      while (col < columns.length) {
+      while (col < localColumns.length) {
         const w = store.colWidths.get(col) ?? DEFAULT_COL_WIDTH
         if (cx + w > x) break
         cx += w; col++
       }
-      if (columns[col]?.type === 'attachment') {
+      if (localColumns[col]?.type === 'attachment') {
         const totalVisibleRows = store.visibleRows.length || rowCount
         let row = 0, ry = HEADER_HEIGHT - store.scrollTop
         while (row < totalVisibleRows) {
@@ -355,7 +396,20 @@ export function GridCanvas({ sheetId, columns = [], rowCount = 1000 }: GridCanva
     if (canvas.style.cursor !== cursor) {
       canvas.style.cursor = cursor
     }
-  }, [sheetAttachments.length, rowIdMap, rowAttachments, store, columns, rowCount])
+
+    // Track hovered column in header for the dropdown button
+    if (y < HEADER_HEIGHT && x >= ROW_NUM_WIDTH) {
+      let hCol = 0, cx = ROW_NUM_WIDTH - store.scrollLeft
+      while (hCol < localColumns.length) {
+        const w = store.colWidths.get(hCol) ?? DEFAULT_COL_WIDTH
+        if (cx + w > x) break
+        cx += w; hCol++
+      }
+      setHoveredHeaderCol(hCol < localColumns.length ? hCol : null)
+    } else {
+      setHoveredHeaderCol(null)
+    }
+  }, [sheetAttachments.length, rowIdMap, rowAttachments, store, localColumns, rowCount, getX])
 
   const handleMouseDown = useCallback((e: React.MouseEvent<HTMLCanvasElement>) => {
     const canvas = canvasElementRef.current
@@ -364,26 +418,79 @@ export function GridCanvas({ sheetId, columns = [], rowCount = 1000 }: GridCanva
     const x = e.clientX - rect.left
     const y = e.clientY - rect.top
 
+    // ── Top-left corner (sheet-level attachments) ──────────────────
     if (y < HEADER_HEIGHT && x < ROW_NUM_WIDTH) {
-      if (sheetAttachments.length > 0) {
-        toggleAttachmentsPanel()
-      }
+      if (sheetAttachments.length > 0) toggleAttachmentsPanel()
       return
     }
 
-    if (y < HEADER_HEIGHT || x < ROW_NUM_WIDTH) {
-      if (x < ROW_NUM_WIDTH) {
-        const row = Math.max(0, Math.floor((y - HEADER_HEIGHT + store.scrollTop) / DEFAULT_ROW_HEIGHT))
-        const absRow = store.visibleRows[row] ?? row
-        const rowId = rowIdMap[absRow]
-        if (rowId && rowAttachments.has(rowId)) {
-          toggleAttachmentsPanel()
+    // ── Column header ───────────────────────────────────────────────
+    if (y < HEADER_HEIGHT && x >= ROW_NUM_WIDTH) {
+      // Check resize handle first (takes priority over rename)
+      for (let col = 0; col < localColumns.length; col++) {
+        const rightEdge = getX(col + 1)
+        if (Math.abs(x - rightEdge) <= RESIZE_ZONE) {
+          const currentWidth = store.colWidths.get(col) ?? DEFAULT_COL_WIDTH
+          const startX = e.clientX
+          resizingRef.current = { col, colId: localColumns[col]!.id, startX, startWidth: currentWidth }
+
+          const onMove = (ev: MouseEvent) => {
+            const dx = ev.clientX - startX
+            const newWidth = Math.max(MIN_COL_WIDTH, currentWidth + dx)
+            store.setColWidth(col, newWidth)
+            dirtyRef.current = true
+          }
+
+          const onUp = (ev: MouseEvent) => {
+            document.removeEventListener('mousemove', onMove)
+            document.removeEventListener('mouseup', onUp)
+            const dx = ev.clientX - startX
+            const newWidth = Math.max(MIN_COL_WIDTH, currentWidth + dx)
+            resizingRef.current = null
+            if (authToken && authWorkspaceId && localColumns[col]) {
+              api.columns.update(
+                sheetId,
+                localColumns[col]!.id,
+                { width: newWidth },
+                { accessToken: authToken, workspaceId: authWorkspaceId },
+              ).catch(() => {})
+            }
+          }
+
+          document.addEventListener('mousemove', onMove)
+          document.addEventListener('mouseup', onUp)
+          return
+        }
+      }
+
+      // Double-click on header cell → start column rename
+      if (e.detail === 2) {
+        let col = 0, cx = ROW_NUM_WIDTH - store.scrollLeft
+        while (col < localColumns.length) {
+          const w = store.colWidths.get(col) ?? DEFAULT_COL_WIDTH
+          if (cx + w > x) break
+          cx += w; col++
+        }
+        const colData = localColumns[col]
+        if (colData) {
+          setEditingHeader({ col, colId: colData.id, name: colData.name })
         }
       }
       return
     }
+
+    // ── Row-number column ───────────────────────────────────────────
+    if (x < ROW_NUM_WIDTH) {
+      const row = Math.max(0, Math.floor((y - HEADER_HEIGHT + store.scrollTop) / DEFAULT_ROW_HEIGHT))
+      const absRow = store.visibleRows[row] ?? row
+      const rowId = rowIdMap[absRow]
+      if (rowId && rowAttachments.has(rowId)) toggleAttachmentsPanel()
+      return
+    }
+
+    // ── Cell grid ───────────────────────────────────────────────────
     let col = 0, cx = ROW_NUM_WIDTH - store.scrollLeft
-    while (col < columns.length) {
+    while (col < localColumns.length) {
       const w = store.colWidths.get(col) ?? DEFAULT_COL_WIDTH
       if (cx + w > x) break
       cx += w; col++
@@ -399,7 +506,7 @@ export function GridCanvas({ sheetId, columns = [], rowCount = 1000 }: GridCanva
 
     const absRow = store.visibleRows[row] ?? row
 
-    if (columns[col]?.type === 'attachment') {
+    if (localColumns[col]?.type === 'attachment') {
       const val = store.cellCache.get(getCellKey(absRow, col))
       if (val != null && val !== '') {
         toggleAttachmentsPanel()
@@ -428,7 +535,8 @@ export function GridCanvas({ sheetId, columns = [], rowCount = 1000 }: GridCanva
     }
 
     dirtyRef.current = true
-  }, [store, columns.length, rowCount])
+  }, [store, localColumns, rowCount, getX, sheetAttachments.length, toggleAttachmentsPanel,
+      rowIdMap, rowAttachments, authToken, authWorkspaceId, sheetId])
 
   // 5. Side Effects (useEffect)
   useEffect(() => {
@@ -445,9 +553,9 @@ export function GridCanvas({ sheetId, columns = [], rowCount = 1000 }: GridCanva
   }, [sheetId, authToken, authWorkspaceId])
 
   useEffect(() => {
-    useGridStore.getState().setColumns(columns)
+    useGridStore.getState().setColumns(localColumns)
     useGridStore.getState().updateVisibleRows(rowCount)
-  }, [columns, rowCount])
+  }, [localColumns, rowCount])
 
   const canvasRef = useCallback((canvas: HTMLCanvasElement | null) => {
     canvasElementRef.current = canvas
@@ -511,7 +619,7 @@ export function GridCanvas({ sheetId, columns = [], rowCount = 1000 }: GridCanva
     const firstVisibleRow = Math.max(0, Math.floor(store.scrollTop / DEFAULT_ROW_HEIGHT))
     const lastVisibleRow = Math.min(totalVisibleRows - 1, firstVisibleRow + Math.ceil(H / DEFAULT_ROW_HEIGHT) + 2)
     const firstVisibleCol = Math.max(0, Math.floor(store.scrollLeft / DEFAULT_COL_WIDTH))
-    const lastVisibleCol = Math.min(columns.length - 1, firstVisibleCol + Math.ceil(W / DEFAULT_COL_WIDTH) + 2)
+    const lastVisibleCol = Math.min(localColumns.length - 1, firstVisibleCol + Math.ceil(W / DEFAULT_COL_WIDTH) + 2)
 
     ctx.strokeStyle = colors.gridLine
     ctx.lineWidth = 0.5
@@ -582,11 +690,13 @@ export function GridCanvas({ sheetId, columns = [], rowCount = 1000 }: GridCanva
     ctx.textAlign = 'center'
     ctx.textBaseline = 'middle'
     for (let col = firstVisibleCol; col <= lastVisibleCol; col++) {
-      if (col >= columns.length) break
+      if (col >= localColumns.length) break
       const x = getX(col)
       const w = store.colWidths.get(col) ?? DEFAULT_COL_WIDTH
       if (x + w < ROW_NUM_WIDTH) continue
-      const colName = columns[col]?.name ?? String.fromCharCode(65 + col)
+      // Skip drawing the name for the header cell currently being edited (input overlay handles it)
+      if (editingHeader?.col === col) continue
+      const colName = localColumns[col]?.name ?? String.fromCharCode(65 + col)
       ctx.fillText(colName, x + w / 2, HEADER_HEIGHT / 2, w - 8)
     }
 
@@ -620,7 +730,7 @@ export function GridCanvas({ sheetId, columns = [], rowCount = 1000 }: GridCanva
 
       if (condRules.length > 0) {
         for (const rule of condRules) {
-          const colIdx = columns.findIndex((c: any) => c.id === rule.colId)
+          const colIdx = localColumns.findIndex((c: any) => c.id === rule.colId)
           if (colIdx < 0) continue
           const cellVal = String(store.cellCache.get(getCellKey(absRow, colIdx)) ?? '')
           if (evalCondition(rule.condition, cellVal, rule.value)) {
@@ -640,7 +750,7 @@ export function GridCanvas({ sheetId, columns = [], rowCount = 1000 }: GridCanva
       }
 
       for (let col = firstVisibleCol; col <= lastVisibleCol; col++) {
-        if (col >= columns.length) break
+        if (col >= localColumns.length) break
         const x = getX(col)
         const colW = store.colWidths.get(col) ?? DEFAULT_COL_WIDTH
         const key = getCellKey(absRow, col)
@@ -669,7 +779,7 @@ export function GridCanvas({ sheetId, columns = [], rowCount = 1000 }: GridCanva
 
         if (val != null && val !== '') {
           const text = String(val)
-          const colType = columns[col]?.type
+          const colType = localColumns[col]?.type
 
           // Specialized rendering for certain column types
           if (colType === 'attachment') {
@@ -777,7 +887,7 @@ export function GridCanvas({ sheetId, columns = [], rowCount = 1000 }: GridCanva
 
     ctx.restore()
     dirtyRef.current = false
-  }, [store, columns, rowCount, collaborators, userId, getX, getY, highlightChangesEnabled, highlightChangesTimeframe])
+  }, [store, localColumns, editingHeader, rowCount, collaborators, userId, getX, getY, highlightChangesEnabled, highlightChangesTimeframe])
 
   useEffect(() => {
     const loop = () => { if (dirtyRef.current) paint(); rafRef.current = requestAnimationFrame(loop) }
@@ -836,7 +946,7 @@ export function GridCanvas({ sheetId, columns = [], rowCount = 1000 }: GridCanva
     if (newScrollTop !== store.scrollTop || newScrollLeft !== store.scrollLeft) {
       store.setScroll(Math.max(0, newScrollTop), Math.max(0, newScrollLeft))
     }
-  }, [store.activeCell, store.visibleRows, columns.length, getX, getY])
+  }, [store.activeCell, store.visibleRows, localColumns.length, getX, getY])
 
   // 6. Final Render
   return (
@@ -858,7 +968,59 @@ export function GridCanvas({ sheetId, columns = [], rowCount = 1000 }: GridCanva
                 className="grid-canvas pointer-events-auto block w-full h-full"
                 onMouseDown={handleMouseDown}
                 onMouseMove={handleMouseMove}
+                onMouseLeave={() => setHoveredHeaderCol(null)}
               />
+
+              {/* Dropdown button — shown on header column hover */}
+              {hoveredHeaderCol !== null && !columnMenuOpen && localColumns[hoveredHeaderCol] && (
+                <div className="absolute inset-0 pointer-events-none">
+                  <button
+                    className="absolute pointer-events-auto flex items-center justify-center text-muted-foreground hover:bg-black/10 dark:hover:bg-white/10 rounded transition-colors"
+                    style={{
+                      left: getX(hoveredHeaderCol) + (store.colWidths.get(hoveredHeaderCol) ?? DEFAULT_COL_WIDTH) - 22,
+                      top: 4,
+                      width: 20,
+                      height: 24,
+                    }}
+                    onMouseEnter={() => setHoveredHeaderCol(hoveredHeaderCol)}
+                    onMouseLeave={() => setHoveredHeaderCol(null)}
+                    onClick={(e) => {
+                      e.stopPropagation()
+                      setColumnMenuOpen({ col: hoveredHeaderCol, colId: localColumns[hoveredHeaderCol]!.id })
+                    }}
+                  >
+                    <span style={{ fontSize: 11, lineHeight: 1 }}>▾</span>
+                  </button>
+                </div>
+              )}
+
+              {/* Column dropdown menu */}
+              {columnMenuOpen && (
+                <div className="absolute inset-0 pointer-events-none" style={{ zIndex: 20 }}>
+                  <div
+                    className="fixed inset-0 pointer-events-auto"
+                    onClick={() => { setColumnMenuOpen(null); setHoveredHeaderCol(null) }}
+                  />
+                  <div
+                    className="absolute pointer-events-auto bg-background border border-border rounded-lg shadow-lg py-1 min-w-[160px]"
+                    style={{ left: getX(columnMenuOpen.col), top: HEADER_HEIGHT, zIndex: 30 }}
+                  >
+                    <button
+                      className="w-full text-left px-3 py-2 text-xs hover:bg-accent transition-colors"
+                      onClick={() => {
+                        const colData = localColumns[columnMenuOpen.col]
+                        if (colData) {
+                          setEditingHeader({ col: columnMenuOpen.col, colId: colData.id, name: colData.name })
+                        }
+                        setColumnMenuOpen(null)
+                        setHoveredHeaderCol(null)
+                      }}
+                    >
+                      Rename Column...
+                    </button>
+                  </div>
+                </div>
+              )}
               {store.isEditing && store.activeCell && (
                 <div className="absolute inset-0 pointer-events-none">
                   <CellEditor
@@ -895,7 +1057,47 @@ export function GridCanvas({ sheetId, columns = [], rowCount = 1000 }: GridCanva
           </div>
         </div>
       ) : (
-        <SpecialViews sheetId={sheetId} doc={doc} columns={columns} />
+        <SpecialViews sheetId={sheetId} doc={doc} columns={localColumns} />
+      )}
+
+      {/* Column Properties dialog — fixed overlay, outside scroll/pointer-events context */}
+      {editingHeader && (
+        <div
+          className="fixed inset-0 flex items-center justify-center bg-black/40"
+          style={{ zIndex: 50 }}
+          onClick={(e) => { if (e.target === e.currentTarget) setEditingHeader(null) }}
+        >
+          <div className="bg-background border border-border rounded-xl shadow-xl p-6 w-80">
+            <h2 className="font-bold text-base text-foreground mb-5">Column Properties</h2>
+            <div className="mb-5">
+              <label className="block text-xs font-semibold text-muted-foreground mb-1.5">Name</label>
+              <input
+                autoFocus
+                className="w-full h-9 px-3 border border-border rounded-lg bg-background text-sm focus:outline-none focus:border-primary transition-colors"
+                value={editingHeader.name}
+                onChange={(e) => setEditingHeader(prev => prev ? { ...prev, name: e.target.value } : null)}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter') { e.preventDefault(); commitHeaderEdit() }
+                  if (e.key === 'Escape') { e.preventDefault(); setEditingHeader(null) }
+                }}
+              />
+            </div>
+            <div className="flex gap-2 justify-end">
+              <button
+                onClick={() => setEditingHeader(null)}
+                className="px-4 py-2 text-sm border border-border rounded-lg hover:bg-accent transition-colors text-foreground"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={commitHeaderEdit}
+                className="px-4 py-2 text-sm bg-primary text-primary-foreground rounded-lg hover:bg-primary/90 transition-colors"
+              >
+                OK
+              </button>
+            </div>
+          </div>
+        </div>
       )}
     </div>
   )

@@ -34,7 +34,7 @@ export default async function SheetPage({
 
   return (
     <Suspense fallback={<GridSkeleton />}>
-      <GridCanvas key={sheetId} sheetId={sheetId} columns={columns} />
+      <GridCanvas key={sheetId} sheetId={sheetId} workspaceId={workspaceId} columns={columns} />
     </Suspense>
   )
 }

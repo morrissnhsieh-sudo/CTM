@@ -200,6 +200,25 @@ export function SpecialViews({ sheetId, doc, columns }: SpecialViewsProps) {
         setPmTasks(res.data.updatedTasks)
         loadPMData(sheet.projectId)
       }
+
+      // Sync the updated end date back to the spreadsheet cell so Grid,
+      // Calendar, Timeline, and all other views reflect the Gantt drag.
+      const dateColIndex = columns.findIndex((c: any) => c.type === 'date' || c.type === 'datetime')
+      const effectiveDateColIndex = dateColIndex >= 0 ? dateColIndex : 3
+
+      const pmTask = pmTasks.find(t => t.id === taskId)
+      if (pmTask?.rowId) {
+        const dbRow = dbRows.find(r => r.id === pmTask.rowId)
+        if (dbRow != null) {
+          updateCellValue(dbRow.position, effectiveDateColIndex, dates.endDate)
+        }
+      } else if (taskId.startsWith('task-')) {
+        // Fallback task ID format "task-{rowIndex}" used when pmTasks aren't loaded yet
+        const rowIndex = parseInt(taskId.slice(5), 10)
+        if (!isNaN(rowIndex)) {
+          updateCellValue(rowIndex, effectiveDateColIndex, dates.endDate)
+        }
+      }
     } catch (err) {
       console.error("Failed to cascade task dates:", err)
       throw err

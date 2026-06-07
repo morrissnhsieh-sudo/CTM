@@ -15,6 +15,13 @@ export default async function WorkspacePage({
     redirect('/login')
   }
 
+  // If the URL workspace doesn't match the JWT workspace, redirect to the user's own workspace.
+  // This prevents "Token workspace mismatch" errors when users navigate to a workspace URL
+  // that differs from the one encoded in their session token.
+  if (session.user.workspaceId && workspaceId !== session.user.workspaceId) {
+    redirect(`/${session.user.workspaceId}`)
+  }
+
   try {
     // Fetch list of sheets in this workspace
     const res = await api.sheets.list({

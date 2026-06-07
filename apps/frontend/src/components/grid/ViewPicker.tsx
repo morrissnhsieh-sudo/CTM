@@ -25,36 +25,38 @@ export function ViewPicker() {
   const params = useParams()
   const sheetId = params?.sheetId as string
   const workspaceId = params?.workspaceId as string || user?.workspaceId || ''
-  const [sheetType, setSheetType] = useState<string | null>(null)
+  const [sheetProjectId, setSheetProjectId] = useState<string | null | undefined>(undefined)
 
   useEffect(() => {
     if (!sheetId || !accessToken || !workspaceId) {
-      setSheetType(null)
+      setSheetProjectId(undefined)
       return
     }
-    
+
     api.sheets.get(sheetId, { accessToken, workspaceId })
       .then(res => {
-        setSheetType(res.data?.type || 'SPREADSHEET')
+        setSheetProjectId(res.data?.projectId ?? null)
       })
       .catch(() => {
-        setSheetType('SPREADSHEET')
+        setSheetProjectId(null)
       })
   }, [sheetId, accessToken, workspaceId])
 
+  // PM views (Gantt, Timeline, Resources) require the sheet to be linked to a project.
+  // While loading (undefined), treat as enabled to avoid flicker.
   const isDisabled = (mode: ViewMode) => {
-    if (sheetType === 'SPREADSHEET') {
-      return ['gantt', 'timeline', 'resources'].includes(mode)
+    if (['gantt', 'timeline', 'resources'].includes(mode)) {
+      return sheetProjectId === null
     }
     return false
   }
 
-  // Auto-switch away from disabled views
+  // Auto-switch away from disabled views once sheet info is loaded
   useEffect(() => {
-    if (sheetType === 'SPREADSHEET' && ['gantt', 'timeline', 'resources'].includes(viewMode)) {
+    if (sheetProjectId === null && ['gantt', 'timeline', 'resources'].includes(viewMode)) {
       setViewMode('grid')
     }
-  }, [sheetType, viewMode, setViewMode])
+  }, [sheetProjectId, viewMode, setViewMode])
 
   return (
     <div className="h-8 border-b border-border bg-background flex items-center gap-0.5 px-2 flex-shrink-0 overflow-x-auto">
@@ -65,7 +67,7 @@ export function ViewPicker() {
             key={mode}
             disabled={disabled}
             onClick={() => !disabled && setViewMode(mode)}
-            title={disabled ? `View not available for ${sheetType} type` : label}
+            title={disabled ? 'This view requires the sheet to be linked to a project' : label}
             className={cn(
               'h-6 px-3 rounded flex items-center gap-1.5 text-xs whitespace-nowrap transition-colors',
               viewMode === mode

@@ -1,0 +1,488 @@
+Data synchronization bug, induced by bar drap-and-drop:
+Select Sheet1-1-1 in Grid view, tap Gantt tab to check the Gantt chart. 
+Drag and drop the "Production Deployment" to change the "Due Date" to 2, Jul.
+Tap Grid tab to check the data. The "Due Date" of "Production Deployment"is not changed accordingly. The due date in the other tabs are not changed accordingly too.
+
+1.Click "Grid" tab, 
+2.Click "Product Catalog" from WORKSPACE EXPLORER, this is a data spreadsheet, not a project 
+3.Click
+
+ In CTM, "types" are categorized into two layers: the underlying Data Model (Sheet Type) and the Visual Representation
+  (View Mode).
+
+  1. Underlying Sheet Types
+  These define the core data structure of the file:
+   * SPREADSHEET: The primary collaborative data model used for high-scale spreadsheets (like the "Product Catalog").
+   * GRID: A lightweight, flattened version of a spreadsheet.
+   * FORM: A sheet specifically structured to receive and process form submissions.
+   * DASHBOARD: A summary data structure used for aggregating information from other sheets.
+   * TEMPLATE: A blueprint used for creating standardized sheets.
+
+  2. UI View Modes
+  Regardless of the underlying data, CTM allows you to visualize and interact with the data in 8 distinct modes:
+   1. Grid View: The classic spreadsheet interface (where you found the scrollbar and attachment issues).
+   2. Gantt View: A project timeline for scheduling tasks and managing dependencies.
+   3. Kanban View: A card-based board (like Trello) for tracking statuses.
+   4. Calendar View: A monthly/weekly view for managing date-driven records.
+   5. Form View: A public-facing or internal data entry interface.
+   6. Timeline View: A high-level chronological roadmap.
+   7. Dashboard View: A collection of widgets, charts, and rollups.
+   8. Resources View: Specialized for tracking team workload and project allocations.
+
+The users can switch between these views using the View Picker (the icon menu usually located right below the main toolbar).
+
+==========
+✦ In CTM's architecture, the difference between SPREADSHEET and GRID is primarily about functional depth versus
+  structural rigidity:
+
+  1. SPREADSHEET (The "Power" Type)
+  This is the full-featured collaborative engine. It is designed to act like a flexible database.
+   * Hierarchical Data: Supports row indenting/outdenting (parent-child relationships).
+   * Rich Metadata: Each row and cell can have extensive metadata, including discussion threads, change history, and
+     audit trails.
+   * Dynamic Logic: Fully compatible with the Formula Engine and Conditional Formatting rules.
+   * Multi-View Support: A SPREADSHEET can be toggled into Gantt, Kanban, or Calendar views because the data is rich
+     enough to support those perspectives.
+   * Primary Use Case: Complex project trackers, product catalogs, and inventory management.
+
+  2. GRID (The "Static" Type)
+  This is a more rigid, flattened data structure.
+   * Flat Structure: Does not typically support row hierarchy or complex grouping; it's a "what you see is what you get"
+     table.
+   * Optimized for Display: Often used for high-performance rendering of large, static datasets where complex
+     collaborative features (like cell-level discussions) aren't required.
+   * Limited Interactivity: While it supports basic editing, it often lacks the advanced project management features
+     (like Baselines or Dependencies) found in the SPREADSHEET type.
+   * Primary Use Case: Simple data tables, reference lists, or exported/imported snapshots of data.
+
+  In summary: If the users need to manage a project with tasks and team discussions, you use a SPREADSHEET. If users just need a
+  simple table to list names and emails without extra complexity, a GRID is more efficient.
+
+=====
+▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀
+✦ In CTM, FORM and TEMPLATE serve two completely different purposes in the document lifecycle. One is for data
+  collection, while the other is for structural replication.
+
+  1. What is a FORM?
+  A FORM is a specialized sheet type designed for input and data collection.
+   * Purpose: It provides a user-friendly interface (like Google Forms or Typeform) for people to submit new records
+     into a spreadsheet without seeing the entire grid.
+   * Behavior: Every time a user completes a FORM, a new row is automatically appended to the underlying data table.
+   * Use Case: Survey collection, bug reporting, order placement, or internal request submissions.
+   * Visibility: Often shared via a public or restricted link where the recipient only sees fields to fill out, not the
+     existing data.
+
+  2. What is a TEMPLATE?
+  A TEMPLATE is a blueprint or master copy of a sheet.
+   * Purpose: It stores a pre-defined structure—including columns, formulas, conditional formatting, and dummy data—that
+     can be reused to create new sheets.
+   * Behavior: When you create a new sheet "from template," CTM clones the structure of the TEMPLATE into a new
+     SPREADSHEET or GRID.
+   * Use Case: A "Project Plan Template" that ensures every new project starts with the same columns (Task, Start Date,
+     End Date) and pre-written formulas.
+   * Visibility: Usually only visible to Admins or Project Managers who are setting up the workspace standards.
+
+  ---
+
+  Key Differences at a Glance
+
+  ┌──────────────────┬──────────────────────────────────────────────┬───────────────────────────────────────────┐
+  │ Feature          │ FORM                                         │ TEMPLATE                                  │
+  ├──────────────────┼──────────────────────────────────────────────┼───────────────────────────────────────────┤
+  │ Primary Goal     │ To collect new data rows.                    │ To replicate a sheet structure.           │
+  │ User Interaction │ Users fill it out (Submit).                  │ Managers clone it (Duplicate).            │
+  │ Data Growth      │ Grows vertically (adds rows) with every use. │ Static; it is the "DNA" for other sheets. │
+  │ Result           │ Results in a single updated spreadsheet.     │ Results in a brand-new sheet file.        │
+  │ Analogy          │ Like a Questionnaire.                        │ Like a Stencil or a Cookie Cutter.        │
+  └──────────────────┴──────────────────────────────────────────────┴───────────────────────────────────────────┘
+
+  In short: The usrs use a TEMPLATE to set up how a sheet should look, and users use a FORM to allow people to easily send data into that sheet.
+
+=====
+What kind of  data structure of the file is not suitable to be shown on Grid View?
+▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀
+✦ While the Grid View is extremely versatile, certain data structures are fundamentally ill-suited for a tabular,
+  row-and-column representation. In CTM, the following types of data would be difficult to manage or visualize in the
+  Grid View:
+
+  1. Deeply Nested or Recursive Hierarchies
+  While CTM's SPREADSHEET type supports some row indenting (parent-child), data that is deeply recursive (e.g., a file
+  system with 20 subfolder levels or a complex organizational chart) becomes unreadable in a grid.
+   * Why: You would have to scroll horizontally excessively to see the indentation, or the "parent" rows would become
+     lost as you scroll down.
+
+  2. Unstructured or Long-Form Narrative Data
+  Data that consists primarily of long-form text (like a legal contract, a book chapter, or a detailed technical
+  specification) does not fit well in a cell.
+   * Why: Grid cells are designed for discrete data points. Reading a 500-word paragraph inside a small rectangle is a
+     poor user experience, and auto-expanding row heights to fit the text would break the visual rhythm of the
+     spreadsheet.
+
+  3. Highly Interconnected Graph Data
+  If your data is a network where the relationships (edges) are just as important as the items (nodes)—such as a social
+  network, a map of power grids, or complex chemical compounds—a grid is the wrong tool.
+   * Why: A grid is 2D. In a graph, one item might connect to 50 others across the entire dataset. Representing these
+     "many-to-many" relationships in a table leads to massive data duplication or unmanageable "linking" columns.
+
+  4. High-Dimensional "Data Cubes"
+  Data that needs to be sliced and diced across many dimensions simultaneously (e.g., "Sales by Region, by Year, by
+  Product Category, by Salesperson, by Currency") is better suited for a Pivot Table or a Dashboard View.
+   * Why: A static grid forces you to choose one fixed "primary" sorting order, making it hard to see multi-dimensional
+     correlations at a glance.
+
+  5. Media-Heavy content
+  A data structure where the primary object is an image, video, or 3D model (like a photography portfolio or a CAD
+  library) is better shown in a Gallery or Kanban View.
+   * Why: The Grid View treats everything as a "record." If the visual content is the most important part, the small
+     thumbnails in a grid cell are too restrictive for meaningful work.
+
+  6. Time-Series Data with High Granularity
+  Raw logs (e.g., server logs recording 1,000 events per second) are technically "tabular" but unsuitable for the
+  standard collaborative Grid View.
+   * Why: The Grid View is optimized for state (editing existing rows). Continuous, high-velocity streams of data would
+     cause the grid to jump and jitter, making collaboration impossible.
+
+ ========
+
+What kind of  data structure of the file is not suitable to be shown on Gantt View?
+✦ The Gantt View is a specialized visualization built entirely around the concept of time intervals and sequential
+  dependencies. If a data structure lacks a chronological dimension or has a logic that contradicts a linear timeline,
+  it is unsuitable for Gantt.
+
+  The following data structures are not suitable for Gantt View:
+
+  1. Static Reference Data (Non-Temporal)
+  Data that represents a fixed list of items with no concept of "start" or "finish" (e.g., a Product Catalog, a Glossary
+  of Terms, or a Price List) makes no sense in a Gantt chart.
+   * Why: A Gantt chart requires a Start Date and an End Date (or duration) to render a bar. If an item doesn't "happen"
+     over time, it would just appear as a single dot or an infinite line, providing no value.
+
+  2. High-Frequency Log Data
+  Data structures representing millisecond-level events (e.g., Server Logs, Sensor Readings, or Stock Market Tickers)
+  are ill-suited for Gantt.
+   * Why: Gantt charts are designed for "human-scale" time (days, weeks, months). Trying to visualize 10,000 events that
+     happened within the same minute would create a "solid wall" of overlapping bars that are impossible to distinguish.
+
+  3. Flat Datasets without Dependencies
+  A simple list of independent items (e.g., a Member Directory or Inventory Count) does not benefit from Gantt.
+   * Why: The primary power of Gantt is showing how one task's delay affects another (Critical Path). If your data
+     structure has no "Predecessor" or "Successor" logic, the Gantt view is just an expensive way to show a calendar.
+
+  4. Cyclic or Circular Workflows
+  Data that represents a recurring loop (e.g., a Weekly Maintenance Checklist or Daily Routine) is difficult to show in
+  a standard Gantt view.
+   * Why: Gantt views are traditionally linear (moving from left to right through time). Representing a task that
+     happens every Tuesday for 52 weeks would either require 52 separate rows (messy) or a specialized "Recurring Task"
+     model that standard Gantt engines struggle to render clearly.
+
+  5. Multi-Value State Data
+  Data where an item can be in multiple places at once or has non-linear status (e.g., Software Feature Requests that
+  can be 'Open', 'In Progress', and 'Blocked' simultaneously across different branches).
+   * Why: A Gantt bar represents a single period of activity. If the data structure requires tracking multiple
+     overlapping "sub-states" for a single row, the Gantt view becomes ambiguous.
+
+  6. Geographically-Driven Data
+  Data where the primary relationship is space rather than time (e.g., Store Locations, Delivery Routes, or Real Estate
+  Parcels).
+   * Why: While a delivery has a time component, the most important information is where it is. A Gantt view ignores the
+     spatial relationship entirely, making it inferior to a Map View.
+
+  Summary for CTM:
+  If your spreadsheet doesn't have at least two date columns (Start/End) and a logic of progression, the Gantt View icon
+  in the View Picker will likely be disabled or show an empty, meaningless timeline. For data that is about "categories"
+  rather than "dates," the Kanban View is usually the better alternative.
+======================
+
+What kind of  data structure of the file is not suitable to be shown on Kanban View?
+✦ The Kanban View is a workflow visualization tool that organizes data into vertical columns based on a categorical
+  field (like Status, Priority, or Team). It is designed to show "flow" and movement.
+
+  Data structures that are not suitable for a Kanban View include:
+
+  1. High-Cardinality Datasets
+  If the field you want to use for columns has hundreds or thousands of unique values (e.g., Exact Timestamps, User IDs,
+  or Product SKUs), a Kanban board becomes unusable.
+   * Why: You would have to scroll horizontally through thousands of columns to find a specific card. Kanban works best
+     with fields that have 3 to 10 distinct options (e.g., "Todo", "Doing", "Done").
+
+  2. Numerical or Financial Tables
+  Data that is primarily used for calculation and comparison (e.g., Balance Sheets, Profit/Loss Statements, or Inventory
+  Valuations) is a poor fit for Kanban.
+   * Why: In these structures, the value of the numbers and their relationship to other cells (formulas) is the main
+     focus. Kanban cards hide the "tabular" nature of the data, making it impossible to perform visual column-summation
+     or row-by-row comparisons.
+
+  3. Static Reference Lists (Fact Tables)
+  Data that does not "move" through a process (e.g., A List of Countries, Tax Rate Tables, or Standard Operating
+  Procedures) has no business on a Kanban board.
+   * Why: Kanban is built for Work in Progress (WIP). If the items don't have a status that changes over time (e.g.,
+     from "Draft" to "Published"), the cards will just sit in a single column forever, making the board a cluttered
+     version of a simple list.
+
+  4. Continuous Time-Series Data
+  Raw data streams like Server Performance Logs, GPS Coordinates, or Heart Rate Monitor readings.
+   * Why: These datasets are defined by a continuous flow of time. Kanban requires "objects" (cards). Trying to turn 60
+     data points per minute into cards would crash the browser and provide zero analytical insight compared to a Line
+     Chart or Dashboard View.
+
+  5. Highly Relational "Mesh" Data
+  Data where every item is linked to many others in a non-linear way (e.g., A Knowledge Graph or A Troubleshooting
+  Decision Tree).
+   * Why: Kanban forces you to group items into a single category (a column). If an item belongs to 5 categories
+     simultaneously or its "status" is dependent on a complex web of other items, the 1-dimensional column structure of
+     Kanban oversimplifies the data to the point of being misleading.
+
+  6. Relational "Pair" Data
+  Datasets that simply map one ID to another (e.g., Cross-Reference Tables or Lookup Keys).
+   * Why: There is no "content" to put on the card. A Kanban board with cards that only show "ID-101" provides no visual
+     context and wastes screen real estate.
+
+  Summary for CTM:
+  If your data doesn't have a Dropdown or Checkbox column that represents a "state," the Kanban View icon will likely be
+  useless. For analytical or calculation-heavy data, stick to the Grid View or use the Dashboard View to aggregate the
+  numbers.
+
+======================
+
+What kind of  data structure of the file is not suitable to be shown on Calendar View?
+✦ The Calendar View is a specialized visualization that maps records onto a chronological grid (days, weeks, or months).
+  It requires at least one Date or Timestamp field to function.
+
+  Data structures that are not suitable for a Calendar View include:
+
+  1. Data Without "Temporal" Context
+  Any dataset that represents a collection of independent objects with no associated "when" (e.g., a Hardware Inventory,
+  a Recipe Book, or a Staff Contact List).
+   * Why: If there is no date column, the Calendar View has no "anchor" to place the items. The view would simply appear
+     empty.
+
+  2. High-Density, Short-Duration Events
+  Data that records many events happening in a very short window (e.g., Network Packet Logs, Clickstream Data, or
+  High-Frequency Trading Logs).
+   * Why: A Calendar View (especially a Monthly or Weekly one) is designed for "human-paced" events. If you have 500
+     records on a single afternoon, the calendar cells will overflow, making it impossible to read or interact with the
+     data. A Timeline View or Scatter Plot is much better for this.
+
+  3. State-Based Fact Tables
+  Data that describes properties rather than events (e.g., A Database of Product Specs or A List of Customer Support
+  Policies).
+   * Why: These items are true "forever" or until updated; they don't "occur" on a specific day. Putting a product's
+     technical specifications on June 15th is arbitrary and misleading.
+
+  4. Overlapping Multi-Phase Cycles
+  Data where items have complex, overlapping "status dates" that aren't a simple start/end range (e.g., A Supply Chain
+  logistics table tracking 'Ordered Date', 'Shipped Date', 'Port Arrival', 'Customs Clear', and 'Final Delivery' in
+  separate columns).
+   * Why: A standard Calendar View usually asks you to pick one primary date field (or one range). Trying to show 5
+     different dates for the same item on a calendar creates visual clutter that is better resolved in a Gantt or
+     Timeline view.
+
+  5. Infinite or "Floating" Durations
+  Data representing items that don't have a defined end point (e.g., Ongoing Subscription Renewals or Indefinite
+  Retainer Contracts).
+   * Why: Calendars work best for "blocks" of time. A task that starts today but never ends would theoretically fill
+     every single day on the calendar forever, which adds zero value to the visualization.
+
+  6. Geocentric or Hierarchical Data
+  Data where the Location or Parent Project is the defining characteristic (e.g., A List of National Parks or An Org
+  Chart).
+   * Why: Even if these items have a "Founding Date," the calendar layout ignores the spatial or hierarchical
+     relationships that make the data meaningful.
+
+  Summary for CTM:
+  If your spreadsheet doesn't contain a column formatted as a Date, the Calendar View will be disabled. It is the
+  perfect tool for Schedules, Editorial Calendars, and Deadline Tracking, but a poor choice for Analysis or Static
+  Databases.
+======================
+
+What kind of  data structure of the file is not suitable to be shown on Form View?
+✦ The Form View is a specialized interface designed for one-way data entry. It maps spreadsheet columns to input fields
+  and creates exactly one new row per submission. Because of this linear and additive nature, certain data structures
+  are fundamentally incompatible:
+
+  1. "Master-Detail" or Transactional Structures
+  Data that requires multiple related rows to be submitted together (e.g., an Invoice which has one "Header" row and ten
+  "Line Item" rows).
+   * Why: A standard form is atomic—one submission equals one row. Forcing a user to fill out a separate form for every
+     single line item of an invoice is a broken workflow. These structures require a Grid or a Custom App interface.
+
+  2. Computed-Dominant Datasets
+  Sheets that are primarily used as calculators or modeling engines where most columns are Formulas (e.g., a Financial
+  Forecast or a Risk Assessment Matrix).
+   * Why: Forms are for inputs. If 90% of your sheet is derived from complex logic and only 10% is raw data, the Form
+     View will appear mostly empty or "read-only," defeating its purpose as a collection tool.
+
+  3. Non-Linear or Graph-Based Data
+  Data where the primary value is the web of connections between items (e.g., a Knowledge Base with many-to-many "See
+  Also" links, or a Project Dependency Map).
+   * Why: Forms are designed to collect independent records. Defining a complex network of relationships (e.g., linking
+     a new task to five existing tasks with specific dependency types) is extremely cumbersome and error-prone in a flat
+     form layout.
+
+  4. Recursive Hierarchies
+  Structures that require building a "tree" (e.g., a WBS - Work Breakdown Structure with multiple levels of sub-tasks).
+   * Why: To create a sub-task via a form, the user must manually select a "Parent ID" from a dropdown. This requires
+     the user to already know the ID or Name of the parent. Building a 5-level deep hierarchy one form at a time is
+     impossible to visualize or manage.
+
+  5. High-Velocity Stream Data
+  Data that is generated automatically by systems (e.g., IoT Sensor Logs or Webhook Payloads).
+   * Why: Forms are a human-to-computer interface. Data structures that grow by 100 records per second are
+     "system-to-system" and should be handled via API or Import Jobs, never via a Form View.
+
+  6. Media-Primary Content (without Metadata)
+  A structure that is just a Bucket of Files (e.g., a raw dump of thousands of photos).
+   * Why: A form's purpose is to wrap data around a record. If you have no fields to fill out other than an "Upload"
+     button, the form adds zero value over a standard file explorer or a drag-and-drop bucket.
+
+  Summary for CTM:
+  Form View is perfect for Surveys, Work Requests, and Ticketing. It is not suitable for data that requires contextual
+  editing of existing rows or data that needs to be interlinked at the moment of creation.
+======================
+
+What kind of  data structure of the file is not suitable to be shown on Timeline View?
+▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀
+✦ The Timeline View is similar to the Gantt View but is typically used for high-level roadmapping and strategic planning
+  rather than detailed task management. It focuses on the "big picture" of when major phases occur.
+
+  Data structures that are not suitable for a Timeline View include:
+
+  1. Point-in-Time "Transactional" Data
+  Data that represents a single, instantaneous event with no duration (e.g., Individual Sales Transactions, Login Logs,
+  or Payment Records).
+   * Why: A timeline is designed to show "blocks" or "phases." If every item in your dataset is a single timestamp (a
+     point, not a span), the timeline will look like a series of disconnected dots, which provides no visual context for
+     "overlap" or "sequence."
+
+  2. High-Granularity "Micro-Events"
+  Data structures that track sub-second or sub-minute intervals (e.g., API Call Latencies, CPU Spikes, or Industrial
+  Sensor Jitter).
+   * Why: Timelines are a "macro" visualization (months, quarters, years). Trying to zoom into a microsecond event on a
+     multi-year roadmap is technically possible but visually meaningless for planning purposes.
+
+  3. Data with Unstable or "Floating" Logic
+  Data where the date is entirely dependent on external conditions that aren't yet defined (e.g., A Backlog of Feature
+  Ideas or A Wishlist).
+   * Why: If there is no "Target Date" or "Planned Quarter," the timeline has no horizontal axis to place the items.
+     Items without dates either won't show up or will be lumped into an "Unscheduled" bucket, rendering the view
+     useless.
+
+  4. Non-Sequential "Relational" Data
+  Structures that define relationships but not timing (e.g., A Network Topology Map, A Family Tree, or A Chemical
+  Compound database).
+   * Why: While an ancestor comes "before" a descendant, they don't have a fixed start/end date in a way that planning a
+     "Q3 Release" does. Forcing these relationships onto a linear timeline is a category error.
+
+  5. Categorical-Only "Attribute" Tables
+  Data where the primary value is a property description (e.g., A Brand Style Guide, Color Palette definitions, or
+  Technical Specs for a Bolt).
+   * Why: These are "forever truths" within the context of the file. They don't start on Monday and end on Friday. A
+     timeline view would suggest that the "Bolt Specification" expires at a certain point, which is inaccurate.
+
+  6. High-Density Multi-Assignment Data
+  Data where a single item occurs in hundreds of disconnected time blocks (e.g., A Staff Member's individual lunch
+  breaks for the year).
+   * Why: While technically date-driven, the sheer number of tiny, repeating fragments would clutter the timeline to the
+     point of being unreadable. This structure is better handled by a Resources View or a Pivot Table.
+
+  Summary for CTM:
+  The Timeline View is for Milestones, Product Roadmaps, and Marketing Campaigns. It is not suitable for Audit Logs,
+  Static Inventories, or Highly Detailed Task Lists where dependencies are more important than the general time-block.
+
+======================
+
+What kind of  data structure of the file is not suitable to be shown on Dashboard View?
+✦ The Dashboard View is a high-level analytical interface designed to aggregate, summarize, and visualize data. It uses
+  widgets (charts, counters, gauges) to show trends and totals. Because it relies on mathematical or statistical
+  "rollups," certain data structures are fundamentally incompatible:
+
+  1. Purely Qualitative or Narrative Data
+  Data structures that consist mostly of long-form text, descriptions, or unique notes (e.g., Meeting Minutes, Case
+  Study Write-ups, or Technical Documentation).
+   * Why: You cannot calculate the "average" of a paragraph or "chart" a list of unique stories. A dashboard would only
+     be able to show a "Total Count" of notes, which provides zero insight into the actual content.
+
+  2. Small or "Micro" Datasets
+  Data that only contains a handful of records (e.g., A team of 3 people or A list of 5 project phases).
+   * Why: Dashboards are designed to simplify "noise" from large amounts of data. Visualizing 3 data points on a Pie
+     Chart or Bar Graph is visually distracting and often more confusing than simply looking at the numbers in a small
+     Grid View.
+
+  3. Binary or Media-Primary Repositories
+  Data structures where the "data" is an external file or a BLOB (e.g., A Photo Library, A collection of PDF Manuals, or
+  Video Assets).
+   * Why: While you can dashboard the metadata (e.g., "Total GB used"), you cannot dashboard the content of the files
+     themselves. A Dashboard View cannot help you "compare" the quality of two images or "search" the text inside a PDF.
+
+  4. One-to-One Mapping Tables
+  Data that serves as a simple lookup or cross-reference (e.g., User ID to Email Address or Country Code to Country
+  Name).
+   * Why: There is no "dimension" to analyze. Every row is unique and independent. Aggregating these would just result
+     in a "1" for every category, which yields no analytical value.
+
+  5. Highly Interdependent "Mesh" Data
+  Data where the value is in the specific path between nodes (e.g., A Network Troubleshooting Flowchart or A Logistics
+  Routing Map).
+   * Why: Dashboards excel at showing "How much?" and "How fast?". They are terrible at showing "Which way?".
+     Visualizing a complex web of 50 interlinked steps as a Bar Chart loses the "logic of connection" that makes the
+     data meaningful.
+
+  6. Atomic Records where "Detail is King"
+  Data where the individual row-level information is the only thing that matters (e.g., A List of Passwords, Secret
+  Keys, or Audit Logs for a Security Breach).
+   * Why: Dashboards provide anonymized summaries. If your job is to find the one specific row where a specific error
+     occurred, a dashboard that shows "Total Errors: 50" is a barrier to your work, not a help. You need the Grid View.
+
+  Summary for CTM:
+  The Dashboard View is for KPIs, Financial Summaries, and Resource Utilization. It is not suitable for Content
+  Creation, Detailed Auditing, or Data Entry. If your data doesn't have "Numbers to Sum" or "Categories to Count," the
+  Dashboard View will look like a collection of empty boxes.
+======================
+
+What kind of  data structure of the file is not suitable to be shown on Resources View?
+▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀
+✦ The Resources View is a specialized workforce management tool. It maps people (or assets) against time and workload.
+  It is designed to answer the question: "Who is doing what, and are they overbooked?"
+
+  Data structures that are not suitable for a Resources View include:
+
+  1. Orphaned or Unassigned Data
+  Any dataset where records do not have an Owner, Assignee, or Resource ID (e.g., a General Wishlist or a Pool of
+  Unallocated Ideas).
+   * Why: The horizontal rows in a Resources View represent specific people or entities. If a piece of data isn't
+     assigned to a "Who," the view has nowhere to place it.
+
+  2. Static Attribute Databases
+  Data that describes fixed properties of objects (e.g., a Hardware Spec Sheet, a Product Catalog, or a Library of
+  Icons).
+   * Why: These items don't have "workload" or "availability." Showing a "10mm Bolt" on a resource timeline provides no
+     value because the bolt doesn't have a schedule or a capacity limit to manage.
+
+  3. Non-Allocatable "Transactional" Logs
+  Data representing instantaneous events that don't consume time or capacity (e.g., Credit Card Transactions, Login
+  Logs, or Email Alerts).
+   * Why: Resources View tracks utilization % (e.g., "John is 50% busy this week"). A transaction that happens in a
+     millisecond does not "occupy" a person in a way that can be charted on a workload graph.
+
+  4. Recursive Work Breakdown Structures (WBS)
+  Deeply nested task hierarchies where the "work" is defined by the parent-child relationship rather than the individual
+  assignment.
+   * Why: Resources View needs to "flatten" work to show a person's total load. In a complex WBS, it’s often unclear
+     which level of the hierarchy should be counted as the "actual work." This is better visualized in Gantt View.
+
+  5. Purely Numerical or Mathematical Models
+  Tables used for calculation that have no "human" or "entity" component (e.g., a Currency Conversion Table or a
+  Physical Constant Reference).
+   * Why: There is no "Resource" to track. Forcing a mathematical formula into a resource row is a logical mismatch.
+
+  6. Anonymous or Crowd-Sourced Data
+  Data where the contributor is unknown or unimportant (e.g., Public Survey Results or Anonymous Feedback).
+   * Why: The goal of the Resources View is to manage named capacity. If the "Resource" is just "Anonymous User 1," you
+     cannot perform any meaningful capacity planning or future scheduling.
+
+  Summary for CTM:
+  The Resources View is for Team Scheduling, Project Staffing, and Asset Management (e.g., Meeting Rooms). It is not
+  suitable for Content Management, Technical Databases, or One-off Event Logs. If your sheet lacks a Contact or Assignee
+  column and a Date Range, the Resources View will be empty or nonsensical.
+
+

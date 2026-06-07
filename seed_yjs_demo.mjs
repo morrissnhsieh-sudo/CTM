@@ -24,8 +24,8 @@ const SHEET_ID = 'ee000001-0000-0000-0000-000000000001'
 
 // 10 rows × 11 cols  (col index = position in column list)
 const ROWS = [
-  // [ ID,  Name,                   SKU,       Category,    Price,    Qty,  InStock, Date,         Owner,            Status,        URL ]
-  [ '1',  'iPhone 15 Pro',         'SKU-0001', 'Electronics', '999.00',  '150', 'true',  '2023-09-22', 'Demo User',      'Active',       'https://apple.com/iphone-15-pro'                  ],
+  // [ ID,  Name,                   SKU,       Category,    Price,    Qty,  InStock, Date,         Owner,            Status,        URL,                                   Files ]
+  [ '1',  'iPhone 15 Pro',         'SKU-0001', 'Electronics', '999.00',  '150', 'true',  '2023-09-22', 'Demo User',      'Active',       'https://apple.com/iphone-15-pro', 'iphone15pro_spec_sheet.pdf' ],
   [ '2',  'MacBook Air M3',        'SKU-0002', 'Electronics', '1299.00', '75',  'true',  '2024-03-08', 'System Admin',   'Active',       'https://apple.com/macbook-air'                    ],
   [ '3',  'Python Crash Course',   'SKU-0003', 'Books',       '35.99',   '320', 'true',  '2023-05-15', 'Project Manager','Active',       'https://nostarch.com/python-crash-course'         ],
   [ '4',  'VS Code Pro License',   'SKU-0004', 'Software',    '49.00',   '500', 'true',  '2024-01-10', 'System Admin',   'Active',       'https://code.visualstudio.com'                    ],
